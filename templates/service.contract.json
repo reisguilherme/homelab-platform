@@ -1,0 +1,15 @@
+{
+  "apiVersion": "homelab/v1",
+  "id": "example-app",
+  "repository": "https://github.com/example/example-app",
+  "runtime": "compose-vm",
+  "resources": {"cpu": 2, "memoryMiB": 1024, "gpu": "none"},
+  "network": {"administration": "private", "inheritPlatformPrivileges": false, "exposure": "private", "ingress": [], "egress": []},
+  "storage": [
+    {"id": "database", "mountPath": "/var/lib/example", "kind": "local-block", "access": "rw", "purpose": "database", "requestedGiB": 10},
+    {"id": "library", "mountPath": "/srv/media", "kind": "network-share", "access": "ro", "purpose": "media", "requestedGiB": 100}
+  ],
+  "telemetry": {"metricsPath": null, "healthcheckPath": "/health/live"},
+  "secrets": ["EXAMPLE_API_TOKEN"],
+  "recovery": {"authority": "consumer", "runbookPath": "docs/recovery.md", "requiresStorageReady": true, "preserveOperatorPauses": true}
+}

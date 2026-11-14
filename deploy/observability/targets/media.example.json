@@ -1,0 +1,6 @@
+[
+  {
+    "targets": ["media-metrics:8090"],
+    "labels": {"job": "homeserver"}
+  }
+]

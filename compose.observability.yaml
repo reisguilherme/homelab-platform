@@ -1,0 +1,95 @@
+# Opt-in shared platform project; never merge with an application Compose.
+name: homelab-observability
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.13.5
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --storage.tsdb.retention.size=4GB
+    user: "65534:65534"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+    restart: unless-stopped
+    networks: [backend, metrics]
+    volumes:
+      - type: bind
+        source: ./deploy/observability/prometheus.yml
+        target: /etc/prometheus/prometheus.yml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${HOMELAB_PROMETHEUS_TARGETS_DIR:?Set HOMELAB_PROMETHEUS_TARGETS_DIR to a private existing directory}
+        target: /etc/prometheus/targets
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${HOMELAB_OBSERVABILITY_DIR:-/srv/appdata/homelab-observability}/prometheus
+        target: /prometheus
+        bind:
+          create_host_path: false
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "2"
+
+  grafana:
+    image: grafana/grafana:13.3.1
+    environment:
+      GF_SECURITY_ADMIN_USER: ${HOMELAB_GRAFANA_ADMIN_USER:?Set HOMELAB_GRAFANA_ADMIN_USER in the private .env}
+      GF_SECURITY_ADMIN_PASSWORD: ${HOMELAB_GRAFANA_ADMIN_PASSWORD:?Set HOMELAB_GRAFANA_ADMIN_PASSWORD in the private .env}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      GF_LOG_MODE: console
+    user: "472:472"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 384m
+    restart: unless-stopped
+    networks: [backend]
+    ports:
+      - 127.0.0.1:3000:3000
+    volumes:
+      - type: bind
+        source: ${HOMELAB_OBSERVABILITY_DIR:-/srv/appdata/homelab-observability}/grafana
+        target: /var/lib/grafana
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./deploy/observability/grafana/provisioning
+        target: /etc/grafana/provisioning
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./deploy/observability/grafana/dashboards
+        target: /var/lib/grafana/dashboards
+        read_only: true
+        bind:
+          create_host_path: false
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "2"
+
+networks:
+  backend:
+    internal: true
+  metrics:
+    name: homelab-metrics
+    internal: true

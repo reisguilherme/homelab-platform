@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/reisguilherme/homelab-platform/contracts/v1/service.schema.json",
+  "title": "Homelab service declaration v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "id", "repository", "runtime", "resources", "network", "storage", "telemetry", "secrets", "recovery"],
+  "properties": {
+    "apiVersion": {"const": "homelab/v1"},
+    "id": {"$ref": "#/$defs/id"},
+    "repository": {"$ref": "#/$defs/repository"},
+    "runtime": {"enum": ["compose-vm", "k3s"]},
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cpu", "memoryMiB", "gpu"],
+      "properties": {
+        "cpu": {"type": "number", "exclusiveMinimum": 0, "maximum": 128},
+        "memoryMiB": {"type": "integer", "minimum": 16, "maximum": 1048576},
+        "gpu": {"enum": ["none", "intel-qsv", "nvidia"]}
+      }
+    },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["administration", "inheritPlatformPrivileges", "exposure", "ingress", "egress"],
+      "properties": {
+        "administration": {"const": "private"},
+        "inheritPlatformPrivileges": {"const": false},
+        "exposure": {"enum": ["private", "public"]},
+        "ingress": {
+          "type": "array", "maxItems": 64, "uniqueItems": true,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["port", "protocol", "scope", "purpose"],
+            "properties": {
+              "port": {"$ref": "#/$defs/port"},
+              "protocol": {"enum": ["tcp", "udp"]},
+              "scope": {"enum": ["private", "public"]},
+              "purpose": {"enum": ["application", "administration", "metrics"]}
+            },
+            "allOf": [{
+              "if": {"properties": {"purpose": {"enum": ["administration", "metrics"]}}},
+              "then": {"properties": {"scope": {"const": "private"}}}
+            }]
+          }
+        },
+        "egress": {
+          "type": "array", "maxItems": 128, "uniqueItems": true,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["dependency", "port", "protocol"],
+            "properties": {
+              "dependency": {"$ref": "#/$defs/id"},
+              "port": {"$ref": "#/$defs/port"},
+              "protocol": {"enum": ["tcp", "udp"]}
+            }
+          }
+        }
+      }
+    },
+    "storage": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "mountPath", "kind", "access", "purpose", "requestedGiB"],
+        "properties": {
+          "id": {"$ref": "#/$defs/id"},
+          "mountPath": {
+            "type": "string",
+            "maxLength": 256,
+            "pattern": "^(?!.*(?:^|/)\\.{1,2}(?:/|$))/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*(?![\\s\\S])"
+          },
+          "kind": {"enum": ["local-block", "network-share", "mergerfs"]},
+          "access": {"enum": ["ro", "rw"]},
+          "purpose": {"enum": ["database", "media", "config", "cache"]},
+          "requestedGiB": {"type": "number", "exclusiveMinimum": 0, "maximum": 1048576}
+        },
+        "allOf": [
+          {
+            "if": {"properties": {"purpose": {"const": "database"}}},
+            "then": {"properties": {"kind": {"const": "local-block"}, "access": {"const": "rw"}}}
+          }
+        ]
+      }
+    },
+    "telemetry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metricsPath", "healthcheckPath"],
+      "properties": {
+        "metricsPath": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/httpPath"}]},
+        "healthcheckPath": {"$ref": "#/$defs/httpPath"},
+        "metricsPort": {"$ref": "#/$defs/port"},
+        "healthcheckPort": {"$ref": "#/$defs/port"}
+      },
+      "allOf": [{
+        "if": {"properties": {"metricsPath": {"type": "null"}}},
+        "then": {"not": {"required": ["metricsPort"]}}
+      }]
+    },
+    "secrets": {
+      "type": "array",
+      "maxItems": 128,
+      "uniqueItems": true,
+      "items": {"type": "string", "maxLength": 128, "pattern": "^(?!.*_FILE$)[A-Z][A-Z0-9_]*(?![\\s\\S])"}
+    },
+    "recovery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authority", "runbookPath", "requiresStorageReady", "preserveOperatorPauses"],
+      "properties": {
+        "authority": {"enum": ["consumer", "platform"]},
+        "runbookPath": {"$ref": "#/$defs/relativePath"},
+        "requiresStorageReady": {"const": true},
+        "preserveOperatorPauses": {"const": true}
+      }
+    }
+  },
+  "$defs": {
+    "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+    "httpPath": {"type": "string", "maxLength": 256, "pattern": "^/[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*(?![\\s\\S])"},
+    "id": {"type": "string", "maxLength": 63, "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*(?![\\s\\S])"},
+    "repository": {"type": "string", "maxLength": 256, "pattern": "^https://github\\.com/[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*(?![\\s\\S])"},
+    "relativePath": {"type": "string", "maxLength": 256, "pattern": "^(?!.*(?:^|/)\\.{1,2}(?:/|$))[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*(?![\\s\\S])"}
+  }
+}
