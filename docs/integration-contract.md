@@ -68,8 +68,10 @@ qualquer manifesto. Endpoints de métricas só entram no coletor por opt-in.
 
 ## Catálogo
 
-[catalog/services.json](../catalog/services.json) começa com `services: []`.
-O objeto raiz exige `apiVersion: "homelab/v1"` e `services`, com até 256 entradas.
+[catalog/services.json](../catalog/services.json) registra primeiro a unidade
+`media-metrics` como `proposed`, após a publicação do commit consumidor. Um
+catálogo vazio (`services: []`) também é válido. O objeto raiz exige
+`apiVersion: "homelab/v1"` e `services`, com até 256 entradas.
 Cada entrada exige:
 
 | Campo | Regra |

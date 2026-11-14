@@ -1,4 +1,13 @@
 {
   "apiVersion": "homelab/v1",
-  "services": []
+  "services": [
+    {
+      "id": "media-metrics",
+      "repository": "https://github.com/reisguilherme/homelab-mediaserver",
+      "commit": "f0a35bbfe34dbbaf4a522bb9a1bba91e81a2cdc2",
+      "contractPath": "platform.contract.json",
+      "manifestPaths": ["compose.observability.yaml"],
+      "status": "proposed"
+    }
+  ]
 }
