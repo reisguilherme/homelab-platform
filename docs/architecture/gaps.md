@@ -9,19 +9,21 @@ parte de G08. O ensaio posterior examinou a inicialização de 13 serviços em
 clones, sem mudança nas contagens de catálogo monitoradas; não aceitou
 integração completa ou produção. A captura final ampliada foi selada com os
 sete volumes e o outro projeto, então com os 22 containers antes ativos
-parados e SSH disponível. Depois, o desligamento foi aceito; SSH está
-inacessível, com confirmação física pendente. Antes de instalar, conferir
-o desligamento físico conforme o
-[estado atual](../implementation-status.md#desligamento-e-preservação-dos-discos).
+parados e SSH disponível. Depois do desligamento, o proprietário instalou
+Proxmox no SSD autorizado. A entrega do host identificado e acessível por
+SSH/HTTPS foi concluída conforme o
+[estado atual](../implementation-status.md#host-proxmox-entregue).
 O proprietário escolheu prosseguir com
 o backup final completo e checksums conferidos somente no HD de 18 TB.
 A transferência Windows foi interrompida e permanece incompleta; o ensaio
 integral final não foi feito. Segunda cópia e novo ensaio integral deixaram
 de ser pré-requisitos desta instalação. O desligamento limpo e a sobrescrita
 somente do SSD de sistema da ficha privada foram autorizados; preservar o
-segundo SSD e os USBs. As conferências físicas continuam necessárias. O
-[roteiro de passagem](../runbooks/proxmox-installation-handoff.md) organiza essas
-pendências sem repetir o ensaio do arquivo intacto ou iniciar workers históricos.
+segundo SSD e os USBs. O host tem zero VMs, segundo SSD desmontado e HDs USB
+desconectados; o firewall está sem regras configuradas. As próximas etapas são
+VMs, restauração, NFS, isolamento e retomada dos serviços. O
+[roteiro de passagem](../runbooks/proxmox-installation-handoff.md) preserva o
+histórico sem exigir repetir o ensaio do arquivo intacto ou iniciar workers históricos.
 
 ## 1. Gaps priorizados
 
@@ -108,7 +110,7 @@ As mudanças futuras devem preservar os testes de download protegido, importaç�
 
 ## 4. Migração proposta e pontos de retorno
 
-1. **Descobrir sem mutar:** conferir layout, espaço, dependências e acesso privado; registrar o destino de cópia consistente. Para este corte, o proprietário escolheu manter o backup final somente no HD de 18 TB; o risco de cópia única permanece. Os SSDs de sistema e mídia já foram identificados no inventário privado; somente o SSD de sistema foi autorizado para sobrescrita. Revalidar modelo/serial no instalador e preservar o segundo SSD e os USBs.
+1. **Baseline do host concluída:** Proxmox instalado no SSD autorizado, inventário e SSH/HTTPS privados conferidos. Para este corte, o proprietário escolheu manter o backup final somente no HD de 18 TB; o risco de cópia única permanece. O segundo SSD e os USBs continuam fora do escopo destrutivo. Preservar suas identidades e planejar a posse exclusiva do storage antes da restauração.
 2. **Preparar ensaio:** construir a divisão de configuração em área isolada com dados sintéticos ou cópias privadas consistentes. Definir dispositivos exatos e janela antes de qualquer instalação, montagem ou passthrough. Não usar o plano histórico de consolidação de discos como autorização para esta migração.
 3. **Preparar retorno:** preservar imagens, configuração, versões de DB e montagem original. Snapshots de VM não são cópia do USB em passthrough. A captura final tem checksums conferidos no HD; o ensaio anterior cobre somente o conjunto anterior. Nesta instalação, a decisão do proprietário dispensa concluir a transferência Windows e executar novo ensaio integral antes do corte.
 4. **Quiescer escritores:** suspender aquisições e tarefas que escrevem; preservar pausas manuais. Parar processos que alteram DB antes da cópia consistente, incluindo WAL/journals ou API de backup apropriada. Não copiar apenas um `.sqlite` ativo e ignorar seu WAL.
@@ -125,13 +127,13 @@ As mudanças futuras devem preservar os testes de download protegido, importaç�
 |---|---|---|
 | D01 | Público com login; gestão privada | Confirmado pelo proprietário |
 | D02 | Mídia RO no Jellyfin; alterações privadas | Confirmado para o to-be; muda a experiência de edição/legendas no corte futuro |
-| D03 | Proxmox + três VMs e Compose agora | Recomendação; evita K8s competir com as aplicações nos 16 GB |
+| D03 | Proxmox + três VMs e Compose agora | Host Proxmox instalado; três VMs continuam propostas e nenhuma foi criada. K3s permanece futuro |
 | D04 | Core agrupa storage + automação na primeira etapa | Recomendação transitória; aceita o risco de escrita dos serviços privados |
 | D05 | Seerr privado inicialmente | Recomendação de escopo; pedidos públicos exigem incluir seus fluxos e riscos na borda |
 | D06 | Entrada pública existente, encaminhamento ou VPS/túnel | Pendente de inspeção IP/CGNAT/IPv6 e equipamento de rede; nenhuma porta nova autorizada aqui |
 | D07 | Permissões, interface e escopo da edição privada | Definir equivalentes de edição/legendas e confirmação destrutiva em origem independente; autenticação nativa Jellyfin sozinha não autoriza exclusão no core |
 | D08 | RPO/RTO de estado e mídia | Proprietário deve definir perda de dados e tempo de parada aceitáveis; acervo recuperável e material insubstituível podem ter políticas diferentes |
-| D09 | Destino para recuperação e janela de migração | Checkpoint anterior e inicialização isolada de 13 serviços examinados em 15/11. Captura final ampliada selada e checksums conferidos no HD; desligamento posterior aceito, SSH inacessível e confirmação física pendente. Proprietário escolheu manter o backup final só no HD e prosseguir: Windows final incompleto, novo ensaio integral dispensado antes de instalar. Sobrescrita somente do SSD de sistema da ficha privada autorizada; conferir modelo/serial e preservar os demais discos conforme o estado atual. Prontidão de produção continua falsa |
+| D09 | Destino para recuperação e janela de migração | Checkpoint anterior e inicialização isolada de 13 serviços examinados em 15/11. Captura final ampliada selada e checksums conferidos no HD. Proprietário manteve o backup final só no HD: Windows final incompleto, novo ensaio integral dispensado antes de instalar. Proxmox instalado no SSD autorizado, SSH/HTTPS privados conferidos; segundo SSD desmontado e USBs desconectados. Restauração e retomada pendentes; prontidão de produção continua falsa |
 | D10 | NAS dedicado e escolha de produto | Depois de confirmar recursos, GUI desejada, discos e rede; Linux NFS é o baseline, não decisão de comprar hardware |
 | D11 | Quais serviços merecem Kubernetes | Decidir por necessidade de operação/escala; Jellyfin, Arr e controlador não precisam migrar juntos |
 | D12 | Controle completo e visibilidade central | Requisito confirmado; proposta: Proxmox + Grafana + operação HomeServer em entrada privada; acesso direto Proxmox preservado |

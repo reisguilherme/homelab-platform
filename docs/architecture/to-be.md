@@ -1,6 +1,6 @@
 # To-be do homelab
 
-Proposta de 14/11/2026. O proprietário confirmou reprodução pública autenticada, administração privada, **Jellyfin sem escrita na mídia**, controle completo de VMs e reintegração automática do USB após falha. Nobreak é pendência de aquisição confirmada. A divisão de VMs, produtos e etapas abaixo é recomendação para fechar o desenho, não uma implantação já executada. A preparação e a publicação de código foram autorizadas; o corte aguarda aviso do proprietário.
+Proposta de 14/11/2026, atualizada em 15/11. O proprietário confirmou reprodução pública autenticada, administração privada, **Jellyfin sem escrita na mídia**, controle completo de VMs e reintegração automática do USB após falha. Nobreak é pendência de aquisição confirmada. O host Proxmox foi instalado pelo proprietário, com identidade e acesso privado SSH/HTTPS verificados. A divisão de VMs, NFS, isolamento e retomada dos serviços abaixo continuam propostas: nenhuma VM foi criada e o firewall não tem regras configuradas. Consulte o [estado da implementação](../implementation-status.md#host-proxmox-entregue).
 
 ## Fronteira entre plataforma e consumidor
 
@@ -10,7 +10,8 @@ bancos lógicos, métricas, dashboards específicos e runbooks. A co-localizaç�
 inicial no core não funde essas responsabilidades; o orçamento continua único.
 O [contrato obrigatório por consumidor](../repositories.md) precede acesso e novo
 consumo de capacidade. Validação local não aplica ACLs nem autoriza implantação.
-K3s continua evolução futura: este repositório não instala Proxmox, K3s ou VMs.
+K3s continua evolução futura. A instalação manual do Proxmox não aplica os
+contratos nem cria VMs por este repositório.
 
 ## 1. Alternativas consideradas
 
@@ -97,7 +98,7 @@ Exclusões de mídia são solicitadas apenas pelo caminho administrativo privado
 | Core | 6 GiB | 4 | SSD para appdata/SQLite; USB para mídia |
 | Margem não alocada | Aproximadamente 2 GiB | — | Absorver picos e medir antes de ampliar |
 
-É um ponto de partida para ensaio com os 16 GB declarados; conferir memória utilizável, sem sobrealocação agressiva. vCPU são escalonadas sobre o processador, não núcleos adicionais. Os dois SSDs de 512 GB não têm layout, saúde ou ocupação verificados: não presumir RAID, pool conjunto ou disponibilidade de 1 TB. Distribuir discos de VM e limitar transcode depois dessa conferência. Mirror de dois SSDs de 512 GB teria aproximadamente a capacidade de um deles; soma de capacidade sem réplica aumenta o impacto da falha de qualquer disco.
+É um ponto de partida nominal com os 16 GB declarados, ainda sem alocações. O inventário do host instalado mediu **15,49 GiB utilizáveis**, 6 núcleos/12 threads, `local-lvm` vazio com **348,82 GiB livres** e cerca de **85 GiB livres na raiz**. Conferir margem real e consumo antes de aplicar o orçamento, sem sobrealocação agressiva; vCPU são escalonadas sobre o processador, não núcleos adicionais. Os dois SSDs de 512 GB estão identificados: Proxmox ocupa o SSD autorizado, e o segundo conserva o UUID ext4 de mídia, desmontado. Saúde e capacidade sob carga continuam pendentes. Não presumir RAID, pool conjunto ou 1 TB disponível; distribuir discos de VM e limitar transcode dentro da capacidade real. Mirror de dois SSDs de 512 GB teria aproximadamente a capacidade de um deles; soma de capacidade sem réplica aumenta o impacto da falha de qualquer disco.
 
 Se a carga real não couber, reduzir concorrência/tarefas auxiliares ou ampliar RAM; não tirar a separação entre playback público e core para acomodar Kubernetes. Para três ou mais VMs de infraestrutura adicionais, 32 GB ou mais pode tornar o projeto mais confortável, mas a escolha final depende da medição e do suporte físico do equipamento.
 

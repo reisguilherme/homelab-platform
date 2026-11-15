@@ -47,10 +47,10 @@ não aceitou reprodução, GPU ou integração completa; `production_ready` e
 estável, incluindo o outro projeto, configurações do host e os sete volumes
 Docker. O conjunto cobre 36 containers: os 22 ativos foram parados de forma
 limpa; os 14 já inativos foram mantidos. Na selagem, o host estava ligado e
-acessível por SSH. O desligamento posterior foi aceito; SSH está inacessível,
-com confirmação física pendente. Antes da instalação, conferir o desligamento
-físico conforme o
-[estado atual](../implementation-status.md#desligamento-e-preservação-dos-discos).
+acessível por SSH. O desligamento posterior foi aceito. Em seguida, o
+proprietário instalou Proxmox no SSD autorizado; identidade, inventário e
+acesso privado por SSH/HTTPS foram conferidos conforme o
+[estado atual](../implementation-status.md#host-proxmox-entregue).
 O proprietário decidiu manter o backup final
 somente no HD de 18 TB, com checksums conferidos, e interromper a transferência
 Windows. Os arquivos parciais no Windows estão incompletos e não são origem
@@ -60,8 +60,10 @@ assim como a segunda cópia. O HD com mídia é a única cópia completa desse
 estado final. Nenhum conteúdo privado é copiado para a plataforma. O
 [roteiro de instalação](../runbooks/proxmox-installation-handoff.md) registra
 a autorização de desligamento limpo e sobrescrita somente do SSD de sistema
-identificado na ficha privada. O segundo SSD e os USBs devem ser preservados;
-a conferência de modelo/serial no instalador permanece obrigatória.
+identificado na ficha privada. O segundo SSD mantém o UUID ext4 anterior e
+está desmontado; os HDs USB continuam desconectados. O novo host tem zero VMs
+e nenhuma regra de firewall configurada. Restauração, NFS, isolamento e
+retomada dos serviços continuam pendentes.
 
 ## Contexto declarado e alcance da evidência
 
@@ -210,11 +212,11 @@ Há snapshots de host, status web e heartbeat do controle. O commit de referênc
 
 O mecanismo USB opt-in já aceita somente `hdd3`, guarda estado, verifica identidade/geração, para consumidores locais e os retoma após conferir mounts e autorizações. O instalador agenda cron por minuto; transições/debounce podem levar vários minutos. A análise estática não comprovava instalação/ativação; o checkpoint anterior de mídia confirmou o retorno do mecanismo habilitado em `ready`, sem ensaiar perda/retorno físicos. Esse retorno antecede a captura final e não descreve a parada atual. O usuário relata perda de energia na fonte AC do HD enquanto o notebook continua na bateria, condição que esse código não previne.
 
-A recuperação atual coordena Docker e mounts no mesmo domínio, sem reanexação Proxmox ou clientes NFS. A prova de payload concluído verifica presença e tamanho, não integridade dos bytes. Chamadas síncronas de filesystem podem bloquear o processo de recuperação; testes existentes não demonstram solução para D-state físico. [Auditoria, links ao código e contrato futuro](power-recovery.md#2-o-que-o-projeto-já-implementa).
+O mecanismo preservado da aplicação coordena Docker e mounts no mesmo domínio, sem reanexação Proxmox ou clientes NFS; ainda não foi implantado em um convidado. A prova de payload concluído verifica presença e tamanho, não integridade dos bytes. Chamadas síncronas de filesystem podem bloquear o processo de recuperação; testes existentes não demonstram solução para D-state físico. [Auditoria, links ao código e contrato futuro](power-recovery.md#2-o-que-o-projeto-já-implementa).
 
 ## O que permanece sem comprovação
 
-A inspeção anterior identificou overrides privados ativos e alguns checks locais; o checkpoint posterior preservou o conjunto declarado, conforme a evidência datada acima. Os dois SSDs já foram identificados no inventário privado. Saúde completa dos discos, capacidade admissível, mounts e permissões efetivos ainda precisam de validação para o corte.
-Não há nesta análise medição de reprodução concorrente, aceleração Intel, CPU, RAM, rede, upload ou recuperação USB.
-Também não há validação de acesso externo, TLS, Tailscale, portas efetivamente alcançáveis ou situação de CGNAT.
+A inspeção anterior identificou overrides privados ativos e alguns checks locais; o checkpoint posterior preservou o conjunto declarado, conforme a evidência datada acima. O inventário do Proxmox já conferiu os SSDs, CPU, RAM utilizável e capacidade livre inicial. Saúde completa dos discos, capacidade sob carga, mounts de mídia e permissões efetivos ainda precisam de validação para retomar os serviços.
+Não há nesta análise medição de reprodução concorrente, aceleração Intel, CPU/RAM sob carga, throughput de rede, upload ou recuperação USB.
+O HTTPS privado do Proxmox foi validado; não há aceite de acesso externo, TLS das aplicações, Tailscale, portas públicas efetivamente alcançáveis ou situação de CGNAT.
 As evidências acima sustentam o desenho existente e seus contratos; a validação do ambiente requer uma etapa separada.

@@ -1,23 +1,23 @@
 # Estado da implementação
 
 Atualização documental: **15/11/2026**. A publicação inicial de 14/11 estabeleceu
-a separação de repositórios na branch `refactor`. O proprietário autorizou
-indisponibilidade. O checkpoint anterior de mídia teve retorno dos serviços;
-na captura final, os 22 containers ativos foram parados. Na selagem, às 21:08
-UTC, o host Ubuntu continuava ligado e acessível por SSH. O desligamento foi
-aceito às 21:33 UTC; SSH está inacessível e a confirmação física é pendente.
-Proxmox não foi instalado. O [roteiro de instalação assistida](runbooks/proxmox-installation-handoff.md)
-está preparado. O proprietário autorizou o desligamento limpo e a sobrescrita
-somente do SSD de sistema identificado na ficha privada para instalar Proxmox;
-o segundo SSD e todos os discos USB devem ser preservados. A conferência física
-de modelo/serial no instalador permanece obrigatória.
+a separação de repositórios na branch `refactor`. **O proprietário instalou
+Proxmox no SSD de sistema autorizado, e a entrega do host identificado e
+acessível pela rede privada está concluída.** Identidade SSH, sessão com chave
+dedicada e HTTPS foram conferidos. O segundo SSD está desmontado com o mesmo
+UUID ext4 anterior; os HDs USB permanecem desconectados. Não há VMs ou regras
+de firewall configuradas. Restauração, NFS, isolamento e serviços continuam
+pendentes; a prontidão de produção permanece falsa. O
+[roteiro de instalação assistida](runbooks/proxmox-installation-handoff.md)
+preserva a preparação e a passagem realizadas.
 
-| Área | Preparado neste repositório | Pendente |
+| Área | Preparado ou comprovado | Pendente |
 |---|---|---|
 | Arquitetura | Documentação geral canônica, diagramas e gaps | Aceite físico das hipóteses de isolamento e capacidade |
 | Integração | Schemas, template, validador local e catálogo por commit | Conformidade dos manifests e permissões efetivas por projeto |
 | Observabilidade | Compose independente com Prometheus/Grafana privados | Ativação, alvos, dashboards, consumo e ensaios no servidor |
-| Proxmox/VMs | Desenho, fronteiras, roteiro e inicialização isolada da mídia examinada; backup final do host, projetos e sete volumes selado e conferido no HD; sobrescrita do SSD de sistema específico autorizada; desligamento aceito | Confirmar desligamento físico, conferir o roteiro e instalar somente no SSD autorizado |
+| Host Proxmox | Instalação no SSD autorizado, inventário e acesso privado SSH/HTTPS verificados | Configurar e testar isolamento; administrar o host sem depender dos serviços convidados |
+| VMs e aplicações | Desenho e ensaio histórico de mídia examinados; backup final do host, projetos e sete volumes selado e conferido no HD | Criar VMs, restaurar estado e validar a retomada; nenhuma VM existe ainda |
 | Hub de arquivos | Modelo NFS e autoridade sobre mounts/exports | Consolidação verificada, exports/ACL e clientes reais |
 | Energia | Estados e regras de reintegração USB | Nobreak, comunicação, coordenação host/guest e teste de falhas |
 | K3s | Critérios de adoção e fronteiras | Recursos adicionais, implantação e contratos dos workloads |
@@ -69,8 +69,8 @@ O HD com mídia passa a ser a única cópia completa do estado final.
 A prova global do acervo e um reparo continuam pendentes. Os dois SSDs de 512 GB já
 foram identificados no inventário privado: um contém o sistema, outro mídia.
 O proprietário autorizou sobrescrever somente o SSD do sistema para Proxmox,
-com identidade exata registrada na ficha privada. Conferir modelo/serial no
-instalador; essa autorização não inclui o segundo SSD nem os discos USB.
+com identidade exata registrada na ficha privada. A instalação foi conferida
+nesse dispositivo; a autorização não incluiu o segundo SSD nem os discos USB.
 Nenhum identificador privado entra neste repositório.
 
 O inventário ampliado encontrou sete volumes Docker. O checkpoint anterior
@@ -85,8 +85,8 @@ arquivo `proxmox-ve_9.2-1.iso`; ARM64 não é compatível com esse processador.
 O [roteiro](runbooks/proxmox-installation-handoff.md#mídia-de-instalação-e-chave-do-operador)
 registra o SHA-256 oficial. A ISO local de 1.706.178.560 bytes foi conferida
 com esse hash, mantendo tamanho e data de modificação estáveis durante a leitura.
-Gravação do pendrive e teste de boot ainda não foram verificados. A autorização
-do SSD específico não substitui as conferências físicas antes de `Install`.
+O proprietário concluiu a instalação e o novo host foi conferido por SSH;
+gravação do pendrive e cada tela do instalador não foram auditadas separadamente.
 
 Esta atualização é documental: não executa SSH, download de ISO, desligamento,
 formatação, montagem ou deploy. Origens e evidências privadas são preservadas.
@@ -95,7 +95,8 @@ testes locais não substituem reprodução, GPU, rede ou recuperação física.
 
 ## Desligamento e preservação dos discos
 
-Em 15/11, às **21:24 UTC (18:24 de São Paulo)**, a auditoria confirmou o backup
+Em 15/11, às **21:08 UTC (18:08 de São Paulo)**, a captura final foi selada
+com o host Ubuntu ainda acessível por SSH. Às **21:24 UTC**, a auditoria confirmou o backup
 montado, seu recibo e os 36 containers parados. Às **21:32 UTC**, antes do
 desligamento, todos os HDs USB estavam ausentes do inventário de blocos. O
 proprietário confirmou que havia desconectado todos eles, esclarecendo a
@@ -104,16 +105,44 @@ retirada; não foi constatada perda do backup.
 
 Às **21:33 UTC**, a checagem confirmou todos os containers parados, `os.sync()`
 terminou e `systemctl poweroff` retornou sucesso. Às **21:33:48 UTC**, SSH estava
-inacessível. Isso comprova a aceitação do desligamento e a indisponibilidade
-da conexão, não que o equipamento já esteja fisicamente desligado.
+inacessível. Naquele momento, o desligamento físico ainda não tinha sido
+observado; depois, o proprietário concluiu a instalação descrita abaixo.
 
-O próximo passo é **confirmar no equipamento que o notebook está desligado**
-e seguir o instalador somente para o SSD autorizado, conferindo modelo/serial.
-Manter os HDs USB desconectados e o adaptador Ethernet USB presente; preservar
-o segundo SSD. Não reconectar, montar ou reparar discos automaticamente.
-A retirada confirmada dos USBs não impede a instalação. A decisão de manter
-o backup final somente no HD continua válida, sem exigir cópia Windows ou
-novo ensaio integral.
+A decisão de manter o backup final somente no HD continua válida, sem exigir
+cópia Windows ou novo ensaio integral. Não reconectar, montar ou reparar
+discos automaticamente; preservar o segundo SSD e a identidade dos USBs para
+a próxima etapa de storage.
+
+## Host Proxmox entregue
+
+O fingerprint SSH foi comparado ao console físico, a chave pública dedicada
+foi cadastrada e uma segunda sessão `root` com essa chave foi confirmada. O
+inventário por SSH de **15/11, 21:56:49 UTC (18:56:49 de São Paulo)** registrou:
+
+| Item observado | Resultado |
+|---|---|
+| Sistema | `pve-manager 9.2.2`, kernel `7.0.2-6-pve`, instalado no SSD de sistema autorizado |
+| Segundo SSD | Mesmo UUID ext4 do inventário anterior, desmontado; os nomes NVMe inverteram entre os sistemas, sem alterar a identidade usada na conferência |
+| HDs USB | Ausentes; permanecem desconectados nesta etapa |
+| CPU e memória | 6 núcleos, 12 threads e 15,49 GiB de RAM utilizável |
+| Capacidade inicial | `local-lvm` vazio, 348,82 GiB livres; cerca de 85 GiB livres na raiz |
+| Convidados | Zero VMs; nenhuma aplicação restaurada ou iniciada |
+| Serviços do host | Cinco serviços PVE/SSH examinados ativos; nenhuma unit em falha |
+| Rede de gestão | Bridge com IP estático, mesmo MAC do adaptador Ethernet USB; gateway e DNS correspondem à ficha privada |
+| Firewall | Status `disabled/running`; zero regras configuradas, consulta da API vazia. Serviço em execução não comprova isolamento |
+
+Às **21:57:57 UTC (18:57:57 de São Paulo)**, o HTTPS retornou `200` com
+validação pela CA obtida no SSH autenticado, hostname/IP presentes no SAN e
+certificado apresentado correspondente ao conferido. O teste não enviou
+credenciais ao painel nem alterou a confiança global do Windows. Isso prova
+identidade e transporte do painel, não CRUD/ACL de VMs ou isolamento de rede.
+
+**Entrega concluída: host identificado e acessível pela rede privada.** A
+checagem não montou discos de mídia, criou VMs, fez deploy ou restaurou serviços.
+As próximas etapas são preparar os convidados e a posse exclusiva do storage,
+restaurar estado e validar NFS, firewall e isolamento antes da publicação.
+K3s permanece futuro. IPs, seriais, UUIDs, fingerprints e chaves ficam somente
+na ficha e nas evidências privadas.
 
 ## Verificação da separação
 

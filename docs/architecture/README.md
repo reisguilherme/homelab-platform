@@ -6,16 +6,16 @@ VMs, K3s, storage remoto ou serviços. O proprietário autorizou indisponibilida
 em 15/11/2026; a inicialização da mídia já foi examinada em clones isolados,
 com limites descritos no [estado da implementação](../implementation-status.md).
 A captura final do host, projetos e sete volumes foi selada, então com os 22
-containers antes ativos parados e SSH disponível. O desligamento posterior
-foi aceito; SSH está inacessível, com confirmação física pendente. Antes de
-instalar, conferir o desligamento físico conforme o
-[estado atual](../implementation-status.md#desligamento-e-preservação-dos-discos). A
+containers antes ativos parados e SSH disponível. Após o desligamento, o
+proprietário instalou Proxmox no SSD autorizado; identidade e acesso privado
+por SSH/HTTPS foram conferidos. A entrega do host está concluída conforme o
+[estado atual](../implementation-status.md#host-proxmox-entregue). A
 captura tem checksums conferidos no HD de 18 TB. O proprietário escolheu
 prosseguir mantendo o backup final somente nesse HD; a transferência Windows
 foi interrompida, incompleta, e novo ensaio integral não será exigido antes de
-instalar. O desligamento limpo e a sobrescrita somente do SSD de sistema da
-ficha privada foram autorizados; o segundo SSD e os USBs serão preservados.
-As conferências físicas, incluindo modelo/serial no instalador, permanecem.
+instalar. O segundo SSD mantém seu UUID ext4 e está desmontado; os HDs USB
+estão desconectados. VMs, restauração, NFS e isolamento continuam pendentes;
+o firewall não tem regras configuradas.
 A posse dos repositórios não implanta a nova topologia.
 
 A proposta inicial continua sendo **um nó Proxmox e três VMs: entrada, reprodução
@@ -34,7 +34,7 @@ NAS dedicado e K3s são evoluções condicionadas a recursos, contratos e ensaio
 | [Repositórios](../repositories.md) | Fonte de cada artefato e contrato obrigatório dos consumidores |
 | [Contrato de integração](../integration-contract.md) | Schema e validação local; limites de autorização e readiness |
 | [Observabilidade preparada](../observability.md) | Configuração central opt-in e integração com exporters |
-| [Instalação assistida](../runbooks/proxmox-installation-handoff.md) | Passagem física, proteção dos discos e reconexão ao host; pendências antes de apagar Ubuntu |
+| [Instalação assistida](../runbooks/proxmox-installation-handoff.md) | Histórico da passagem física e entrega do host com SSH/HTTPS verificados |
 
 Os diagramas ficam em Mermaid junto ao texto. Não há cópia do HTML antigo nem
 dependência de um render local para ler esta arquitetura.
@@ -43,13 +43,13 @@ dependência de um render local para ler esta arquitetura.
 
 | Item | Estado |
 |---|---|
-| Compute informado | i7-10750H, 16 GB DDR4; dois SSDs de 512 GB identificados no inventário privado, ocupados por sistema e mídia; saúde e margem exigem validação |
+| Compute observado | i7-10750H, 6 núcleos/12 threads, 15,49 GiB utilizáveis; Proxmox no SSD de sistema, segundo SSD ext4 desmontado; 348,82 GiB livres em `local-lvm`, sem VMs; saúde e carga ainda exigem validação |
 | Mídia informada | HD USB de 18 TB; a observação anterior ainda encontrou quatro volumes na união |
 | Demanda | Até dez reproduções, upload anunciado de 300 Mbit/s; desempenho não medido |
 | Internet | IP público relatado; CGNAT, IPv6 e acesso externo não comprovados |
 | Público | Jellyfin com login individual; administração privada |
 | Escrita Jellyfin | As-is permite edições/legendas; **to-be confirmado** é mídia RO e alterações privadas |
-| Administração | Controle completo de VMs confirmado; Proxmox + Grafana + operações da aplicação propostos |
+| Administração | Proxmox com SSH/HTTPS privados verificados; CRUD/ACL de VMs, Grafana e operações da aplicação ainda pendentes |
 | Energia | Notebook na bateria e fonte do USB sem AC relatados; ensaio físico pendente |
 | Recuperação | Reintegração automática exigida após validações; identidade, integridade ou readiness incertas bloqueiam retomada |
 | Nobreak | Aquisição pendente; modelo, carga, autonomia e comunicação ainda não definidos |

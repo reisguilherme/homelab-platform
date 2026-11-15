@@ -3,9 +3,12 @@
 Preparado em **15/11/2026**. O proprietário autorizou indisponibilidade, o
 desligamento limpo e a sobrescrita **somente do SSD de sistema identificado
 na ficha privada para instalar Proxmox**. O segundo SSD e todos os discos USB
-devem ser preservados. A conferência de modelo/serial no instalador permanece
-obrigatória. O desligamento foi aceito; SSH está inacessível, com confirmação
-física pendente. Proxmox não foi instalado.
+devem ser preservados. **A instalação foi concluída pelo proprietário no SSD
+autorizado, e a entrega do host identificado e acessível por SSH/HTTPS foi
+verificada.** Não há VMs ou regras de firewall configuradas; restauração,
+NFS, isolamento e serviços continuam pendentes. O
+[registro canônico](../implementation-status.md#host-proxmox-entregue) contém
+o inventário sanitizado e o alcance das verificações.
 O proprietário decidiu manter o backup final completo somente no HD de 18 TB
 e prosseguir sem concluir a cópia Windows ou fazer nova restauração integral.
 Essa decisão substitui os pré-requisitos anteriores de segunda cópia e ensaio
@@ -88,17 +91,22 @@ antes do desligamento; o proprietário confirmou que havia desconectado todos
 eles. O backup foi conferido antes da retirada, sem perda constatada. Às
 **21:33 UTC**, após confirmar os containers parados
 e concluir a sincronização, o host aceitou `systemctl poweroff`. SSH estava
-inacessível às **21:33:48 UTC**; o desligamento físico ainda não foi confirmado.
+inacessível às **21:33:48 UTC**; naquele momento o desligamento físico ainda não
+havia sido observado. Em seguida, o proprietário instalou Proxmox.
 
-**Confirmar o notebook fisicamente desligado antes de seguir o instalador.**
-Manter os HDs USB desconectados e o adaptador Ethernet USB presente. Instalar
-somente no SSD autorizado, após conferir modelo/serial; preservar o segundo
-SSD. Não reconectar, montar ou reparar automaticamente. O
-[estado canônico](../implementation-status.md#desligamento-e-preservação-dos-discos)
-registra a causa esclarecida; a retirada não impede instalar nem exige retomar
-a cópia Windows ou fazer novo ensaio integral.
+O inventário SSH de **21:56:49 UTC** confirmou Proxmox no SSD autorizado,
+segundo SSD ext4 desmontado com identidade preservada, HDs USB ausentes e rede
+pelo adaptador Ethernet USB. O acesso com chave dedicada foi testado em sessão
+separada; às **21:57:57 UTC**, HTTPS validado pela CA obtida no SSH respondeu
+`200`. A entrega do host está concluída; o
+[estado canônico](../implementation-status.md#host-proxmox-entregue) detalha as
+provas e os limites. Não reconectar, montar ou reparar discos automaticamente.
 
-## Preparação para instalação
+## Preparação utilizada na instalação
+
+Os itens abaixo preservam o roteiro da passagem concluída, sem exigir nova
+instalação ou repetição das verificações já comprovadas. Operações futuras
+devem manter a identificação por modelo/serial e o escopo dos discos.
 
 | Item | Resultado necessário |
 |---|---|
@@ -151,22 +159,26 @@ e data de modificação permaneceram estáveis durante a leitura; o recibo fica
 privado. Se o arquivo for substituído ou alterado, repetir a comparação do
 arquivo real com a [página oficial da ISO](https://www.proxmox.com/en/downloads/proxmox-virtual-environment/iso/proxmox-ve-9-2-iso-installer).
 
-A gravação do pendrive e o teste de boot **ainda não foram verificados**.
+Gravação do pendrive e cada tela de boot não foram auditadas separadamente;
+o proprietário concluiu a instalação e o novo host foi conferido por SSH.
 Identificar separadamente o pendrive autorizado a receber a imagem; nunca
 selecionar um disco do acervo. A documentação oferece Etcher ou
 Rufus em modo DD para Windows. [Preparação oficial da mídia](https://github.com/proxmox/pve-docs/blob/master/pve-installation-media.adoc).
-A ISO conferida permite preparar essa mídia. A sobrescrita do SSD específico
-foi autorizada; a instalação continua dependendo das conferências físicas
-previstas neste roteiro.
+A ISO conferida fundamentou a preparação dessa mídia. A sobrescrita do SSD
+específico foi autorizada, e a instalação nesse dispositivo foi conferida
+posteriormente pelo inventário do host.
 
 Uma chave SSH dedicada já foi preparada no Windows, sem substituir chaves
 ou credenciais existentes. A chave privada permanece protegida no Windows;
-somente a pública será instalada no Proxmox. Seu fingerprint fica na ficha privada. O
-arquivo `known_hosts` dessa nova conexão será separado do usado pelo Ubuntu.
-Os caminhos e comandos concretos serão fornecidos na ficha pelo operador,
-após conferir o material existente. [Chaves OpenSSH no Windows](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_keymanagement).
+somente a pública foi instalada no Proxmox. Seu fingerprint fica na ficha privada. O
+arquivo `known_hosts` dessa nova conexão é separado do usado pelo Ubuntu.
+Os caminhos e comandos concretos permanecem na ficha privada do operador.
+[Chaves OpenSSH no Windows](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_keymanagement).
 
 ## Passagem física e instalação
+
+Procedimento preparado para a passagem já concluída. Ele não instrui reinstalar
+o host entregue; eventuais novas operações destrutivas exigem escopo próprio.
 
 1. Com as pendências anteriores fechadas, conferir que os projetos continuam
    parados e que o estado corresponde à captura aceita. Se houver retorno ou
@@ -224,8 +236,8 @@ O certificado inicial é emitido pela CA própria da instalação; sua confianç
 deve ser conferida pelo canal já autenticado, separadamente do SSH. Não abrir
 portas administrativas no roteador nem ignorar a identidade TLS. [Certificados Proxmox](https://github.com/proxmox/pve-docs/blob/master/certificate-management.adoc).
 
-A entrega desta fase é **host identificado e acessível pela rede privada**.
-Ela não anexa USB, monta acervo, inicia VMs ou publica serviços automaticamente.
+A entrega desta fase, **host identificado e acessível pela rede privada**, foi
+concluída. Ela não anexou USB, montou acervo, iniciou VMs ou publicou serviços.
 A etapa seguinte prepara convidados, posse exclusiva do storage, restauração
 funcional e isolamento conforme o [to-be](../architecture/to-be.md).
 

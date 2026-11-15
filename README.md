@@ -6,16 +6,18 @@ de compute, redes, armazenamento, acessos e energia. As aplicações mantêm seu
 próprios repositórios e entregam os manifests e as integrações que consomem essa
 infraestrutura.
 
-**Estado: preparação na branch `refactor`.** Prometheus/Grafana e o validador
-local estão preparados; Proxmox, VMs, firewall, hub NFS e K3s ainda exigem
-implantação e validação física. Publicar estes arquivos não altera o servidor.
+**Estado: host Proxmox instalado e acesso privado verificado.** A instalação
+foi realizada pelo proprietário; SSH e HTTPS foram conferidos em 15/11/2026.
+VMs, restauração, firewall, hub NFS e serviços continuam pendentes. Prometheus/
+Grafana e o validador local estão preparados na branch `refactor`; K3s é futuro.
+Publicar estes arquivos não aplica a topologia ao servidor.
 
 ```mermaid
 flowchart TB
   P[homelab-platform] --> A[Arquitetura e políticas]
   P --> C[Contratos e catálogo por commit]
   P --> O[Prometheus e Grafana privados]
-  P -. implantação futura .-> I[Proxmox, VMs, rede, storage e energia]
+  P -. evolução sobre o host Proxmox instalado .-> I[VMs, rede, storage e energia]
   M[homelab-mediaserver] -->|declara integração| C
   M -->|exporter e dashboard de mídia| O
   F[Outros projetos: Immich etc.] -. contrato próprio .-> C
@@ -33,8 +35,8 @@ flowchart TB
 | [Contrato de integração](docs/integration-contract.md) | Recursos, rede, storage, telemetria, segredos e recuperação |
 | [Observabilidade](docs/observability.md) | Grafana/Prometheus, alvos opt-in, diretórios e limites |
 | [Estado da implementação](docs/implementation-status.md) | O que existe no código e o que falta comprovar no servidor |
-| [Proxmox](infrastructure/proxmox/README.md) | Escopo e dependências da futura implantação |
-| [Instalação assistida](docs/runbooks/proxmox-installation-handoff.md) | Preparação, passagem física e reconexão privada; instalação ainda condicionada às pendências |
+| [Proxmox](infrastructure/proxmox/README.md) | Host entregue e escopo das VMs e do isolamento pendentes |
+| [Instalação assistida](docs/runbooks/proxmox-installation-handoff.md) | Histórico da preparação, instalação e reconexão privada verificada |
 | [K3s](infrastructure/k3s/README.md) | Entrada posterior e fronteira com o hipervisor |
 
 O [repositório de mídia](https://github.com/reisguilherme/homelab-mediaserver/tree/refactor)
@@ -81,17 +83,16 @@ Não há automação de instalação do hipervisor, CI/CD, gerenciador de backup
 releases próprias ou units do host. As instruções de observabilidade são opt-in.
 O proprietário autorizou indisponibilidade. O checkpoint anterior de mídia
 teve retorno dos serviços; a captura final ampliada foi selada, então com os 22
-containers antes ativos parados e SSH disponível. Depois, o desligamento foi
-aceito; SSH está inacessível e a confirmação física é pendente. Antes de
-instalar, conferir o desligamento físico conforme o
-[estado de implementação](docs/implementation-status.md#desligamento-e-preservação-dos-discos).
+containers antes ativos parados e SSH disponível. Depois do desligamento,
+o proprietário instalou Proxmox somente no SSD autorizado. A entrega do host
+identificado e acessível por SSH/HTTPS está concluída, conforme o
+[estado de implementação](docs/implementation-status.md#host-proxmox-entregue).
 A captura final tem checksums conferidos no HD de 18 TB. O proprietário
 decidiu prosseguir com essa única cópia completa: a transferência Windows foi
 interrompida e está incompleta; novo ensaio integral não é pré-requisito para
-instalar. O desligamento limpo e a sobrescrita somente do SSD de sistema
-identificado na ficha privada foram autorizados; preservar o segundo SSD e
-os USBs e conferir modelo/serial no instalador. As conferências físicas do
-roteiro continuam necessárias. A inicialização
+instalar. O segundo SSD mantém o UUID ext4 anterior e está desmontado; os HDs
+USB permanecem desconectados. Ainda não foram criadas VMs ou retomados serviços,
+e não há regras de firewall configuradas. A inicialização
 isolada da mídia já foi examinada, com os limites do [registro de implementação](docs/implementation-status.md).
 Disco único, USB e hub único continuam pontos de falha; adquirir
 o nobreak e ensaiar recuperação são pendências do desenho.
