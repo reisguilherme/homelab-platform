@@ -13,20 +13,28 @@ receber métricas ou um volume não concede administração do Proxmox.
 ## Antes da implantação
 
 O [roteiro de instalação assistida](../../docs/runbooks/proxmox-installation-handoff.md)
-prepara a passagem física e a reconexão por Ethernet/SSH. Ainda não libera
-apagar o Ubuntu nem contém os valores privados do host.
+prepara a passagem física e a reconexão por Ethernet/SSH. O desligamento limpo
+e a sobrescrita somente do SSD de sistema da ficha privada foram autorizados;
+o desligamento foi aceito, SSH está inacessível e a confirmação física é
+pendente. Proxmox não foi instalado. Antes de `Install`, conferir o
+desligamento físico conforme o
+[estado atual](../../docs/implementation-status.md#desligamento-e-preservação-dos-discos).
+Os valores privados permanecem fora deste repositório.
 
 - Os dois SSDs já estão identificados no inventário privado. Confrontar
-  modelo/serial do candidato no instalador e obter autorização de sobrescrita
-  do dispositivo/escopo exatos após fechar a preservação. A autorização geral
-  para refatorar não autoriza apagar o sistema.
+  modelo/serial do SSD de sistema autorizado no instalador. Preservar o segundo
+  SSD e todos os discos USB; a autorização não inclui esses dispositivos.
 - Usar a ISO x86_64/amd64 para o processador Intel; a imagem ARM64 não serve
   para este host. O arquivo local já teve seu SHA-256 conferido conforme o
   roteiro. A gravação do pendrive e o teste de boot ainda não foram verificados.
 - Aproveitar o checkpoint de mídia restaurado e o ensaio de inicialização
   isolada já registrado, com seus limites. A captura final, incluindo o outro
-  projeto e os sete volumes, foi selada. Os 22 containers antes ativos seguem
-  parados; concluir e verificar a cópia Windows e a restauração do novo conjunto.
+  projeto e os sete volumes, foi selada, com os 22 containers antes ativos
+  parados. O proprietário decidiu prosseguir com o backup final completo e
+  checksums conferidos somente no HD de 18 TB. A transferência Windows foi
+  interrompida, incompleta, e não é origem de restauração; novo ensaio integral
+  do conjunto final não é pré-requisito da instalação. O checkpoint anterior
+  permanece preservado, e o risco de cópia única do estado final continua.
   A reconciliação do acervo e o reparo continuam no projeto consumidor; não
   reativar workers históricos inativos apenas para completar a instalação.
 - Medir RAM disponível e consumo sob carga. O orçamento nominal do desenho deve

@@ -8,9 +8,18 @@ cópia Windows, arquivos restaurados e 11 SQLite verificados, conforme o
 parte de G08. O ensaio posterior examinou a inicialização de 13 serviços em
 clones, sem mudança nas contagens de catálogo monitoradas; não aceitou
 integração completa ou produção. A captura final ampliada foi selada com os
-sete volumes e o outro projeto; os 22 containers antes ativos continuam
-parados, com SSH disponível no host. Cópia completa Windows, restauração final
-e SSD/escopo autorizados continuam necessários para a instalação. O
+sete volumes e o outro projeto, então com os 22 containers antes ativos
+parados e SSH disponível. Depois, o desligamento foi aceito; SSH está
+inacessível, com confirmação física pendente. Antes de instalar, conferir
+o desligamento físico conforme o
+[estado atual](../implementation-status.md#desligamento-e-preservação-dos-discos).
+O proprietário escolheu prosseguir com
+o backup final completo e checksums conferidos somente no HD de 18 TB.
+A transferência Windows foi interrompida e permanece incompleta; o ensaio
+integral final não foi feito. Segunda cópia e novo ensaio integral deixaram
+de ser pré-requisitos desta instalação. O desligamento limpo e a sobrescrita
+somente do SSD de sistema da ficha privada foram autorizados; preservar o
+segundo SSD e os USBs. As conferências físicas continuam necessárias. O
 [roteiro de passagem](../runbooks/proxmox-installation-handoff.md) organiza essas
 pendências sem repetir o ensaio do arquivo intacto ou iniciar workers históricos.
 
@@ -25,7 +34,7 @@ pendências sem repetir o ensaio do arquivo intacto ou iniciar workers históric
 | G05 | P0, separação de playback | Guard de ext4/UUID local → contrato de NFS para leitor | Entrada da playback recusa mount ausente/errado; não grava no diretório vazio local; reconexão não apaga biblioteca |
 | G06 | P0, manter integridade | Controller, banco, hardlinks e UUID locais → colocação preservada no core | Fixture temporária prova importação, hardlink, espaço, exclusão coordenada e USB ausente/estrangeiro no convidado |
 | G07 | P0, acesso público | Proxy e firewall presentes em código → controles efetivos comprovados | Origem externa testa login comum, admin negado, backend direto inacessível, headers/CSRF/token, WebSocket/Range; reboot/restart conserva regras |
-| G08 | P0, recuperação | Um disco/host e estado local → retorno e cópia recuperável | Copiar estado de forma consistente para destino independente disponível; restauração isolada validada; definir perda e tempo aceitáveis |
+| G08 | P0, recuperação | Um disco/host e estado local → retorno e cópia recuperável | Registrar captura consistente, destino e alcance da prova de retorno; este corte segue D09; redundância e ensaios adicionais ficam como evolução futura |
 | G09 | P1, estabilidade | Recursos sem orçamento global → limites por VM e tarefas | Carga com 1/5/10 sessões sem OOM, SSD cheio ou degradação além do alvo escolhido; medir direto e transcode separadamente |
 | G10 | P1, segurança | Binds do projeto/.env amplos → segredos por consumidor | Processo de telemetry e playback não consegue ler credenciais de controle; auditar mounts e ambiente sem imprimir valores |
 | G11 | P1, segurança | Bucket de falhas global → proteção de login sem bloqueio coletivo prolongado | Ensaio isolado demonstra que ataque distribuído não impede todos os novos logins pelo período global atual; preservar limites por origem/conta |
@@ -99,9 +108,9 @@ As mudanças futuras devem preservar os testes de download protegido, importaç�
 
 ## 4. Migração proposta e pontos de retorno
 
-1. **Descobrir sem mutar:** conferir layout, espaço, dependências e acesso privado; escolher destino de cópia consistente. O USB de mídia não deve ser a única cópia do estado crítico que depende dele. Os SSDs de sistema e mídia já foram identificados no inventário privado; revalidar modelo/serial no instalador e autorizar o candidato exato após fechar a preservação.
+1. **Descobrir sem mutar:** conferir layout, espaço, dependências e acesso privado; registrar o destino de cópia consistente. Para este corte, o proprietário escolheu manter o backup final somente no HD de 18 TB; o risco de cópia única permanece. Os SSDs de sistema e mídia já foram identificados no inventário privado; somente o SSD de sistema foi autorizado para sobrescrita. Revalidar modelo/serial no instalador e preservar o segundo SSD e os USBs.
 2. **Preparar ensaio:** construir a divisão de configuração em área isolada com dados sintéticos ou cópias privadas consistentes. Definir dispositivos exatos e janela antes de qualquer instalação, montagem ou passthrough. Não usar o plano histórico de consolidação de discos como autorização para esta migração.
-3. **Preparar retorno:** preservar imagens, configuração, versões de DB e montagem original. Snapshots de VM não devem ser considerados cópia do USB em passthrough. Conferir leitura da cópia e restauração isolada antes do corte.
+3. **Preparar retorno:** preservar imagens, configuração, versões de DB e montagem original. Snapshots de VM não são cópia do USB em passthrough. A captura final tem checksums conferidos no HD; o ensaio anterior cobre somente o conjunto anterior. Nesta instalação, a decisão do proprietário dispensa concluir a transferência Windows e executar novo ensaio integral antes do corte.
 4. **Quiescer escritores:** suspender aquisições e tarefas que escrevem; preservar pausas manuais. Parar processos que alteram DB antes da cópia consistente, incluindo WAL/journals ou API de backup apropriada. Não copiar apenas um `.sqlite` ativo e ignorar seu WAL.
 5. **Migrar core:** entregar USB a uma única VM, validar identidade e fixtures, preservar paths lógicos, UID/GID, permits/claims, hardlinks e IDs. `hdd3` pode continuar como identidade histórica; não renomear só por haver um único disco. Não formatar, reparticionar ou copiar toda a mídia se o passthrough preservado bastar.
 6. **Migrar playback:** banco/config em SSD próprio, NFS RO validado, entrypoint apropriado e fluxo privado de alterações. Desabilitar efeitos de remoção automática decorrentes de mount ausente até comprovar o comportamento. Testar atualizações explícitas da biblioteca porque notificações locais podem não atravessar NFS.
@@ -122,7 +131,7 @@ As mudanças futuras devem preservar os testes de download protegido, importaç�
 | D06 | Entrada pública existente, encaminhamento ou VPS/túnel | Pendente de inspeção IP/CGNAT/IPv6 e equipamento de rede; nenhuma porta nova autorizada aqui |
 | D07 | Permissões, interface e escopo da edição privada | Definir equivalentes de edição/legendas e confirmação destrutiva em origem independente; autenticação nativa Jellyfin sozinha não autoriza exclusão no core |
 | D08 | RPO/RTO de estado e mídia | Proprietário deve definir perda de dados e tempo de parada aceitáveis; acervo recuperável e material insubstituível podem ter políticas diferentes |
-| D09 | Destino independente para recuperação e janela de migração | Checkpoint anterior e inicialização isolada de 13 serviços examinados em 15/11. Captura final ampliada selada; 22 containers mantidos parados com SSH disponível. Cópia Windows e restauração do novo conjunto pendentes; SSD/escopo exigem autorização própria; prontidão de produção continua falsa |
+| D09 | Destino para recuperação e janela de migração | Checkpoint anterior e inicialização isolada de 13 serviços examinados em 15/11. Captura final ampliada selada e checksums conferidos no HD; desligamento posterior aceito, SSH inacessível e confirmação física pendente. Proprietário escolheu manter o backup final só no HD e prosseguir: Windows final incompleto, novo ensaio integral dispensado antes de instalar. Sobrescrita somente do SSD de sistema da ficha privada autorizada; conferir modelo/serial e preservar os demais discos conforme o estado atual. Prontidão de produção continua falsa |
 | D10 | NAS dedicado e escolha de produto | Depois de confirmar recursos, GUI desejada, discos e rede; Linux NFS é o baseline, não decisão de comprar hardware |
 | D11 | Quais serviços merecem Kubernetes | Decidir por necessidade de operação/escala; Jellyfin, Arr e controlador não precisam migrar juntos |
 | D12 | Controle completo e visibilidade central | Requisito confirmado; proposta: Proxmox + Grafana + operação HomeServer em entrada privada; acesso direto Proxmox preservado |

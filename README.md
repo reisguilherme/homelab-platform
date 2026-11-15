@@ -80,10 +80,18 @@ de declarar conformidade com o isolamento proposto.
 Não há automação de instalação do hipervisor, CI/CD, gerenciador de backups,
 releases próprias ou units do host. As instruções de observabilidade são opt-in.
 O proprietário autorizou indisponibilidade. O checkpoint anterior de mídia
-teve retorno dos serviços; a captura final ampliada já foi selada, com os 22
-containers antes ativos mantidos parados e SSH disponível no host Ubuntu.
-A instalação do Proxmox depende do SSD/escopo autorizados e da segunda cópia
-e restauração desse conjunto verificadas. A inicialização
+teve retorno dos serviços; a captura final ampliada foi selada, então com os 22
+containers antes ativos parados e SSH disponível. Depois, o desligamento foi
+aceito; SSH está inacessível e a confirmação física é pendente. Antes de
+instalar, conferir o desligamento físico conforme o
+[estado de implementação](docs/implementation-status.md#desligamento-e-preservação-dos-discos).
+A captura final tem checksums conferidos no HD de 18 TB. O proprietário
+decidiu prosseguir com essa única cópia completa: a transferência Windows foi
+interrompida e está incompleta; novo ensaio integral não é pré-requisito para
+instalar. O desligamento limpo e a sobrescrita somente do SSD de sistema
+identificado na ficha privada foram autorizados; preservar o segundo SSD e
+os USBs e conferir modelo/serial no instalador. As conferências físicas do
+roteiro continuam necessárias. A inicialização
 isolada da mídia já foi examinada, com os limites do [registro de implementação](docs/implementation-status.md).
 Disco único, USB e hub único continuam pontos de falha; adquirir
 o nobreak e ensaiar recuperação são pendências do desenho.

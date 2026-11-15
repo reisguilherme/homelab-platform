@@ -9,11 +9,21 @@ próprios; o catálogo aponta para commits imutáveis e distingue proposta de ex
 - Não fazer deploy, reiniciar o servidor, formatar/particionar discos ou alterar
   montagens sem a autorização operacional correspondente. Publicar código não
   autoriza aplicar a configuração. O proprietário autorizou indisponibilidade
-  em 15/11/2026; isso não autoriza sobrescrever o SSD candidato já identificado
-  nem dispensa o estado final preservado e verificado. A inicialização da mídia
+  em 15/11/2026 e, depois, o desligamento limpo e a sobrescrita somente do SSD
+  de sistema identificado na ficha privada para instalar Proxmox. Preservar o
+  segundo SSD e todos os discos USB; conferir modelo/serial antes de `Install`.
+  O desligamento foi aceito; SSH está inacessível e a confirmação física é
+  pendente. Antes de instalar, conferir a passagem física registrada no
+  [estado de implementação](docs/implementation-status.md#desligamento-e-preservação-dos-discos).
+  A inicialização da mídia
   em clones foi examinada; isso não comprova integração completa ou produção.
-  A captura final foi selada, com 22 containers mantidos parados e SSH disponível;
-  a segunda cópia e restauração ainda precisam de aceite. Consulte o estado de implementação.
+  A captura final foi selada, então com 22 containers parados e SSH disponível;
+  seus checksums no HD de 18 TB foram conferidos. O proprietário escolheu
+  manter ali a única cópia final completa e prosseguir; a transferência Windows
+  foi interrompida e seus parciais não servem para restauração. Não reexigir
+  segunda cópia ou novo ensaio integral como condição para instalar. O
+  checkpoint anterior permanece intacto; as conferências físicas continuam
+  necessárias. Consulte o estado de implementação.
 - Dispositivos e escopo exatos precisam de autorização antes de alteração
   destrutiva. Preservar o acervo, origens e pausas manuais; não limpar mídia.
 - Não substituir fstab inteiro, ativar RTX, reescrever serviço Lenovo, abrir

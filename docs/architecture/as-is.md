@@ -46,13 +46,22 @@ não aceitou reprodução, GPU ou integração completa; `production_ready` e
 Às 18:08 de São Paulo, em 15/11, a captura final ampliada foi selada com origem
 estável, incluindo o outro projeto, configurações do host e os sete volumes
 Docker. O conjunto cobre 36 containers: os 22 ativos foram parados de forma
-limpa e continuam parados; os 14 já inativos foram mantidos. O host segue
-ligado e acessível por SSH. A cópia completa no Windows está em transferência,
-ainda sem aceite, e a restauração final permanece pendente. Nenhum conteúdo
-privado é copiado para a plataforma. O
-[roteiro de instalação](../runbooks/proxmox-installation-handoff.md) ainda exige
-autorização de sobrescrita do SSD candidato, já identificado no inventário
-privado, após fechar a preservação necessária.
+limpa; os 14 já inativos foram mantidos. Na selagem, o host estava ligado e
+acessível por SSH. O desligamento posterior foi aceito; SSH está inacessível,
+com confirmação física pendente. Antes da instalação, conferir o desligamento
+físico conforme o
+[estado atual](../implementation-status.md#desligamento-e-preservação-dos-discos).
+O proprietário decidiu manter o backup final
+somente no HD de 18 TB, com checksums conferidos, e interromper a transferência
+Windows. Os arquivos parciais no Windows estão incompletos e não são origem
+de restauração; o checkpoint anterior permanece intacto. A restauração integral
+do conjunto final não foi testada e deixou de ser pré-requisito da instalação,
+assim como a segunda cópia. O HD com mídia é a única cópia completa desse
+estado final. Nenhum conteúdo privado é copiado para a plataforma. O
+[roteiro de instalação](../runbooks/proxmox-installation-handoff.md) registra
+a autorização de desligamento limpo e sobrescrita somente do SSD de sistema
+identificado na ficha privada. O segundo SSD e os USBs devem ser preservados;
+a conferência de modelo/serial no instalador permanece obrigatória.
 
 ## Contexto declarado e alcance da evidência
 

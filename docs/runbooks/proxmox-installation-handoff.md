@@ -1,11 +1,16 @@
 # Passagem para instalação assistida do Proxmox
 
-Preparado em **15/11/2026**. O proprietário autorizou indisponibilidade; isso
-não autoriza apagar o SSD do sistema, já identificado no inventário privado.
-**A substituição do Ubuntu ainda não está liberada:** a captura final foi
-selada, mas sua cópia completa no Windows e restauração ainda não foram verificadas. Após
-esse fechamento, o candidato e o escopo exatos serão apresentados para
-autorização de sobrescrita. Este roteiro não instala, reinicia, formata ou monta dispositivos.
+Preparado em **15/11/2026**. O proprietário autorizou indisponibilidade, o
+desligamento limpo e a sobrescrita **somente do SSD de sistema identificado
+na ficha privada para instalar Proxmox**. O segundo SSD e todos os discos USB
+devem ser preservados. A conferência de modelo/serial no instalador permanece
+obrigatória. O desligamento foi aceito; SSH está inacessível, com confirmação
+física pendente. Proxmox não foi instalado.
+O proprietário decidiu manter o backup final completo somente no HD de 18 TB
+e prosseguir sem concluir a cópia Windows ou fazer nova restauração integral.
+Essa decisão substitui os pré-requisitos anteriores de segunda cópia e ensaio
+final; não amplia a autorização de sobrescrita a outros dispositivos. Este
+roteiro não instala, reinicia, formata ou monta dispositivos.
 
 ## O que já foi comprovado
 
@@ -39,15 +44,15 @@ aceitas; o documento do consumidor detalha o alcance por serviço.
 ### Captura final do host
 
 A captura ampliada foi **selada em 15/11, às 18:08 de São Paulo (21:08 UTC)**,
-com estabilidade dos metadados de origem confirmada. Incluiu o estado posterior
+com estabilidade dos metadados de origem e checksums no HD confirmados. Incluiu o estado posterior
 ao checkpoint anterior, o outro projeto, configurações do host e os **sete
 volumes Docker**. Seis desses volumes não tinham vínculo atual a containers;
 um deles contém cerca de 58 GB. Todos foram preservados.
 
 O conjunto cobre 36 containers: os **22 que estavam ativos foram parados
-de forma limpa e continuam parados**, e os 14 já inativos foram preservados.
-O host permanece ligado e acessível por SSH. O retorno dos 21 serviços descrito
-acima pertence ao checkpoint anterior, não ao estado atual.
+de forma limpa**, e os 14 já inativos foram preservados. Na selagem, o host
+continuava ligado e acessível por SSH. O retorno dos 21 serviços descrito
+acima pertence ao checkpoint anterior, não ao estado posterior à captura.
 
 O manifesto registra 313.827 entradas, 189.935 arquivos regulares únicos e
 129.461.539.241 bytes lógicos. Foram arquivadas 49 imagens e três rootfs de
@@ -57,24 +62,53 @@ sem contar o próprio recibo. Esses números descrevem a captura selada, não
 uma restauração já aceita. O acervo, o reparo e a publicação incremental
 continuam no escopo do consumidor.
 
+Depois da selagem, o proprietário mudou a estratégia para manter essa captura
+somente no HD de 18 TB. A transferência ao Windows foi interrompida; os arquivos
+parciais foram preservados, mas estão incompletos e **não servem como origem de
+restauração**. O checkpoint anterior já verificado no Windows continua intacto,
+com sua evidência histórica de restauração e ensaio dos 13 serviços.
+
+O HD contém mídia e a única cópia completa do estado final; se ele falhar,
+esse backup mais recente também pode ser perdido. A restauração integral do conjunto final
+não foi testada. O proprietário optou por prosseguir com esses limites; concluir
+a cópia Windows ou repetir o ensaio integral não é pré-requisito desta instalação.
+
 | Evidência da captura final | Estado em 15/11 |
 |---|---|
-| Arquivos e recibo de captura | Selados; origem estável confirmada |
+| Arquivos e recibo de captura | Selados; origem estável e checksums no HD confirmados |
 | Recibo de controle no Windows | Copiado e conferido; não representa a transferência dos arquivos grandes |
-| Segunda cópia completa no Windows | Transferência iniciada; conferência ainda pendente |
-| Restauração do conjunto final | Pendente; o ensaio do checkpoint anterior não certifica o novo conjunto |
+| Transferência final ao Windows | Interrompida por decisão do proprietário; arquivos parciais preservados, incompletos e sem aceite para restauração |
+| Restauração integral do conjunto final | Não testada; não será exigida antes de instalar conforme a decisão do proprietário; o ensaio anterior mantém seu alcance original |
 
-## Preparação antes do desligamento
+## Estado da passagem física
+
+A auditoria de **15/11, 21:24 UTC** confirmou backup montado, recibo e todos
+os 36 containers parados. Às **21:32 UTC**, todos os HDs USB estavam ausentes,
+antes do desligamento; o proprietário confirmou que havia desconectado todos
+eles. O backup foi conferido antes da retirada, sem perda constatada. Às
+**21:33 UTC**, após confirmar os containers parados
+e concluir a sincronização, o host aceitou `systemctl poweroff`. SSH estava
+inacessível às **21:33:48 UTC**; o desligamento físico ainda não foi confirmado.
+
+**Confirmar o notebook fisicamente desligado antes de seguir o instalador.**
+Manter os HDs USB desconectados e o adaptador Ethernet USB presente. Instalar
+somente no SSD autorizado, após conferir modelo/serial; preservar o segundo
+SSD. Não reconectar, montar ou reparar automaticamente. O
+[estado canônico](../implementation-status.md#desligamento-e-preservação-dos-discos)
+registra a causa esclarecida; a retirada não impede instalar nem exige retomar
+a cópia Windows ou fazer novo ensaio integral.
+
+## Preparação para instalação
 
 | Item | Resultado necessário |
 |---|---|
 | Aplicações a retomar | Inicialização isolada examinada nos 13 serviços descritos acima; preservar imagens, dependências e manutenção e respeitar os limites do ensaio |
-| Outro projeto do host | Incluído na captura final; conferir sua restauração e o retorno necessário, sem presumir aceite pelo ensaio anterior de mídia |
-| SSD de instalação | Candidato já identificado no inventário privado; conferir modelo/serial no instalador e obter autorização de sobrescrita após fechar a preservação |
+| Outro projeto do host | Incluído na captura final; sua restauração funcional não é comprovada pelo ensaio anterior de mídia |
+| SSD de instalação | Sobrescrita autorizada somente para o SSD de sistema identificado na ficha privada, para instalar Proxmox; conferir modelo/serial no instalador |
 | Segundo SSD e USBs | Conteúdo e papéis identificados; permanecem fora dos alvos de instalação; não criar espelho nem pool que os inclua |
 | Rede de gestão | Proprietário confirmou que manterá o adaptador Ethernet USB e reservará o endereço combinado; conferir a reserva no roteador, ausência de conflito, NIC/MAC, IP/CIDR, gateway, DNS, hostname e alcance pelo Windows |
 | Console físico | Proprietário disponível com tela/teclado e acesso ao boot; perda de SSH não elimina o acesso ao host |
-| Cópia final | Captura no HD de 18 TB selada com todos os volumes; concluir e verificar a cópia Windows e a restauração do conjunto; preservar o checkpoint anterior |
+| Backup final | Captura completa no HD de 18 TB selada e conferida por checksum, conforme a estratégia escolhida; preservar esse HD e o checkpoint anterior |
 
 O inventário privado identificou ambos os SSDs de 512 GB, ocupados: um pelo
 sistema, outro por mídia. Não há SSD vazio presumido. O proprietário confirmou
@@ -86,11 +120,10 @@ discos e interfaces podem mudar no novo sistema: selecionar discos por
 modelo/serial e NIC por MAC, conforme a ficha privada.
 
 O ensaio concluído não transforma todos os artefatos históricos em serviços
-a reconstruir. A captura final contém estado posterior ao ensaiado e ainda
-precisa de cópia Windows e restauração conferidas, incluindo o outro
-projeto e os volumes adicionais. Usar o procedimento de arquivo já validado;
-repetir conferências quando houver novo estado, alteração do método ou falha
-que as justifique. Não extrair
+a reconstruir. A captura final contém estado posterior ao ensaiado, incluindo
+o outro projeto e os volumes adicionais; seus checksums não comprovam uma
+restauração funcional. Na reconstrução posterior, usar o procedimento já
+validado e registrar os resultados reais. Não extrair
 checkpoints sobre a instalação atual nem remover a manutenção para obter saúde
 aparente. `production_ready` e `partial_restart_safe` permanecem falsos até os
 respectivos aceites; instalação do host não os muda.
@@ -122,8 +155,9 @@ A gravação do pendrive e o teste de boot **ainda não foram verificados**.
 Identificar separadamente o pendrive autorizado a receber a imagem; nunca
 selecionar um disco do acervo. A documentação oferece Etcher ou
 Rufus em modo DD para Windows. [Preparação oficial da mídia](https://github.com/proxmox/pve-docs/blob/master/pve-installation-media.adoc).
-A ISO conferida permite preparar essa mídia; a instalação continua aguardando
-a preservação final e a autorização do SSD exato.
+A ISO conferida permite preparar essa mídia. A sobrescrita do SSD específico
+foi autorizada; a instalação continua dependendo das conferências físicas
+previstas neste roteiro.
 
 Uma chave SSH dedicada já foi preparada no Windows, sem substituir chaves
 ou credenciais existentes. A chave privada permanece protegida no Windows;

@@ -5,10 +5,18 @@ plataforma e projetos foi aprovada; publicar estes arquivos não instala Proxmox
 VMs, K3s, storage remoto ou serviços. O proprietário autorizou indisponibilidade
 em 15/11/2026; a inicialização da mídia já foi examinada em clones isolados,
 com limites descritos no [estado da implementação](../implementation-status.md).
-A captura final do host, projetos e sete volumes foi selada; os 22 containers
-antes ativos continuam parados, e o host permanece acessível por SSH. A
-instalação depende da segunda cópia e restauração final verificadas, além do
-SSD/escopo autorizados. A posse dos repositórios não implanta a nova topologia.
+A captura final do host, projetos e sete volumes foi selada, então com os 22
+containers antes ativos parados e SSH disponível. O desligamento posterior
+foi aceito; SSH está inacessível, com confirmação física pendente. Antes de
+instalar, conferir o desligamento físico conforme o
+[estado atual](../implementation-status.md#desligamento-e-preservação-dos-discos). A
+captura tem checksums conferidos no HD de 18 TB. O proprietário escolheu
+prosseguir mantendo o backup final somente nesse HD; a transferência Windows
+foi interrompida, incompleta, e novo ensaio integral não será exigido antes de
+instalar. O desligamento limpo e a sobrescrita somente do SSD de sistema da
+ficha privada foram autorizados; o segundo SSD e os USBs serão preservados.
+As conferências físicas, incluindo modelo/serial no instalador, permanecem.
+A posse dos repositórios não implanta a nova topologia.
 
 A proposta inicial continua sendo **um nó Proxmox e três VMs: entrada, reprodução
 e núcleo privado**, com Compose nos convidados. O núcleo mantém storage e automação
@@ -85,8 +93,10 @@ distingue essas evidências. O checkpoint inicial de configuração não incluí
 bancos. O checkpoint operacional posterior, referenciado no as-is, conferiu
 cópia Windows, arquivos restaurados e 11 SQLite. Naquela etapa não iniciou
 aplicações da restauração; o ensaio posterior examinou 13 serviços em clones,
-conforme o as-is. O conjunto final posterior já foi capturado, mas sua cópia
-completa Windows e restauração ainda não foram aceitas. A presente separação não
+conforme o as-is. O conjunto final posterior tem a única cópia completa no HD
+por escolha do proprietário; os parciais Windows não são origem de restauração,
+e o ensaio integral final não ocorreu. O checkpoint Windows anterior continua
+preservado. A presente separação não
 repete SSH, inventário, scan de imagens, pentest ou ensaios físicos. Testes locais
 não comprovam Tailscale, firewall, USB, GPU, WAN ou reprodução em clientes.
 
@@ -96,5 +106,5 @@ sem dispositivos, escopo e autorização próprios. Não ativar RTX, reescrever 
 serviço Lenovo, abrir portas no roteador ou publicar administração qBit na internet.
 Preservar acervo, origens e pausas manuais; não apagar mídia automaticamente.
 Não criar CI/CD, releases próprias, gerenciador de backups ou units do host.
-Cópias verificadas e restauração são requisitos operacionais, sem introduzir essas
-camadas no projeto.
+Registrar a estratégia de cópia escolhida e o alcance das provas de restauração,
+sem introduzir essas camadas no projeto nem reimpor a segunda cópia dispensada.
