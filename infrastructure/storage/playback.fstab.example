@@ -1,0 +1,3 @@
+# Replace the documentation IP with the private core address.
+# Keep explicit mounting until application startup/storage-absence guards pass.
+192.0.2.10:/ /srv/media-view/media nfs noauto,_netdev,ro,hard,vers=4.2,proto=tcp,port=2049,nodev,nosuid,noexec 0 0

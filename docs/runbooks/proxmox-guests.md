@@ -2,10 +2,12 @@
 
 Este roteiro registra a etapa posterior à [entrega do host](../implementation-status.md#host-proxmox-entregue).
 As três VMs já estão em execução, com sistema e acesso administrativo verificados.
-Elas ainda não executam Docker, aplicações ou serviços de mídia. Publicação,
-restauração, GPU, USB e NFS permanecem pendentes.
+Elas ainda não executam Docker ou aplicações de mídia. Depois deste bootstrap,
+o HD de 18 TB foi entregue ao core e NFS RO foi aplicado para playback,
+conforme a [etapa de storage](storage-core-handoff.md). Publicação, restauração,
+GPU e recuperação automática USB permanecem pendentes.
 
-## Estado comprovado
+## Estado comprovado no bootstrap
 
 | Papel | vCPU | RAM fixa | Disco virtual | Resultado |
 |---|---:|---:|---:|---|
@@ -210,8 +212,9 @@ sem publicação até revisar o resultado.
 ## Próximas condições para publicação
 
 A publicação permanece fechada até restaurar as aplicações, comprovar login e
-administração privada, testar mounts/ausência de mídia e impor NFS RO no
-servidor e no cliente. A restrição da gestão na LAN também continua pendente.
+administração privada e testar os guards das aplicações diante de mount
+ausente ou incorreto. O NFS RO foi aplicado e testado na etapa posterior de
+storage; preservar essa propriedade. A restrição da gestão na LAN continua pendente.
 GPU, reprodução, carga, recuperação USB e nobreak mantêm seus
 próprios testes; não são consequência de três VMs funcionando.
 

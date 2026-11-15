@@ -1,0 +1,2 @@
+# Replace the documentation IP with the single private playback address.
+/srv/external3/homeserver/media 192.0.2.20(ro,sync,fsid=0,subtree_check,all_squash,anonuid=1000,anongid=1000,secure,mountpoint=/srv/external3)

@@ -61,12 +61,15 @@ estado final. Nenhum conteúdo privado é copiado para a plataforma. O
 [roteiro de instalação](../runbooks/proxmox-installation-handoff.md) registra
 a autorização de desligamento limpo e sobrescrita somente do SSD de sistema
 identificado na ficha privada. O segundo SSD mantém o UUID ext4 anterior e
-está desmontado; os HDs USB continuam desconectados. A entrega inicial teve
+está desmontado; na entrega inicial os HDs USB estavam desconectados. Essa etapa teve
 zero VMs e firewall sem regras. Posteriormente, três VMs Ubuntu foram criadas,
 com rede privada filtrada, testes de conectividade e autostart após reboot
-conferidos. O [estado atual](../implementation-status.md#vms-e-rede-privada)
-registra esse avanço; restauração, NFS, aplicações e restrição da gestão na
-LAN continuam pendentes.
+conferidos. Em seguida, o proprietário autorizou e reconectou o HD de 18 TB
+para posse exclusiva do core, que passou a exportar mídia RO para playback.
+A leitura e as negações de escrita foram testadas com fixture. O
+[estado atual](../implementation-status.md#storage-no-core-e-nfs-ro) registra
+esse avanço; restauração, aplicações, recuperação USB e restrição da gestão
+na LAN continuam pendentes.
 
 ## Contexto declarado e alcance da evidência
 

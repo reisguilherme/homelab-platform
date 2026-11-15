@@ -20,10 +20,12 @@ integral final não foi feito. Segunda cópia e novo ensaio integral deixaram
 de ser pré-requisitos desta instalação. O desligamento limpo e a sobrescrita
 somente do SSD de sistema da ficha privada foram autorizados; preservar o
 segundo SSD e os USBs. As três VMs base estão em execução, com rede privada
-filtrada e autostart conferido após reboot; segundo SSD desmontado e HDs USB
-desconectados. O [estado atual](../implementation-status.md#vms-e-rede-privada)
-registra os testes TCP e de pacotes. Restauração, NFS, aplicações, restrição da
-gestão na LAN e publicação continuam pendentes. O
+filtrada e autostart conferido após reboot; o segundo SSD permanece desmontado.
+O HD de 18 TB foi depois reconectado e entregue ao core, com mídia NFS RO para
+playback. O [estado atual](../implementation-status.md#storage-no-core-e-nfs-ro)
+registra as provas de rede e leitura/escrita em fixture. Restauração,
+aplicações, recuperação USB, restrição da gestão na LAN e publicação continuam
+pendentes. O
 [roteiro de passagem](../runbooks/proxmox-installation-handoff.md) preserva o
 histórico sem exigir repetir o ensaio do arquivo intacto ou iniciar workers históricos.
 
@@ -34,7 +36,7 @@ histórico sem exigir repetir o ensaio do arquivo intacto ou iniciar workers his
 | G01 | P0, antes da migração | Hardware e rede declarados → baseline real sanitizado | Conferir RAM útil, ocupação/saúde SSD, USB/UUID, NICs, IOMMU, IP WAN/CGNAT/IPv6 e ACLs sem publicar inventário bruto |
 | G02 | P0, antes da migração | Working tree extenso → versão reproduzível do corte | Identificar exatamente arquivos/imagens/configuração em uso e preservar alterações; não confundir HEAD com implantação |
 | G03 | P0, antes da exposição nova | Containers no mesmo host → edge/playback/core em VMs e zonas | Testes negativos bloqueiam gestão, core e LAN a partir da VM pública, tanto por IPv4 como IPv6 |
-| G04 | P0, decisão confirmada | Jellyfin RW → leitura de mídia, escrita privada | Export do servidor e cliente RO; tentativa de gravação pela identidade privilegiada de teste da playback falha; funções privadas de metadados/legendas verificadas |
+| G04 | P0, aplicado parcialmente | NFS RO na playback testado em fixture; Jellyfin e edição privada ainda ausentes | Preservar negações de escrita no servidor e cliente; validar Jellyfin e funções privadas de metadados/legendas |
 | G05 | P0, separação de playback | Guard de ext4/UUID local → contrato de NFS para leitor | Entrada da playback recusa mount ausente/errado; não grava no diretório vazio local; reconexão não apaga biblioteca |
 | G06 | P0, manter integridade | Controller, banco, hardlinks e UUID locais → colocação preservada no core | Fixture temporária prova importação, hardlink, espaço, exclusão coordenada e USB ausente/estrangeiro no convidado |
 | G07 | P0, acesso público | Proxy e firewall presentes em código → controles efetivos comprovados | Origem externa testa login comum, admin negado, backend direto inacessível, headers/CSRF/token, WebSocket/Range; reboot/restart conserva regras |
@@ -130,12 +132,12 @@ As mudanças futuras devem preservar os testes de download protegido, importaç�
 | D01 | Público com login; gestão privada | Confirmado pelo proprietário |
 | D02 | Mídia RO no Jellyfin; alterações privadas | Confirmado para o to-be; muda a experiência de edição/legendas no corte futuro |
 | D03 | Proxmox + três VMs e Compose agora | Host e três VMs Ubuntu operantes, com QGA/SSH e autostart após reboot conferidos; Compose e aplicações ainda ausentes. K3s permanece futuro |
-| D04 | Core agrupa storage + automação na primeira etapa | Recomendação transitória; aceita o risco de escrita dos serviços privados |
+| D04 | Core agrupa storage + automação na primeira etapa | HD e NFS já no core; automação ainda ausente. Concentração de escritores privados mantém risco sobre o acervo |
 | D05 | Seerr privado inicialmente | Recomendação de escopo; pedidos públicos exigem incluir seus fluxos e riscos na borda |
 | D06 | Entrada pública existente, encaminhamento ou VPS/túnel | Pendente de inspeção IP/CGNAT/IPv6 e equipamento de rede; nenhuma porta nova autorizada aqui |
 | D07 | Permissões, interface e escopo da edição privada | Definir equivalentes de edição/legendas e confirmação destrutiva em origem independente; autenticação nativa Jellyfin sozinha não autoriza exclusão no core |
 | D08 | RPO/RTO de estado e mídia | Proprietário deve definir perda de dados e tempo de parada aceitáveis; acervo recuperável e material insubstituível podem ter políticas diferentes |
-| D09 | Destino para recuperação e janela de migração | Checkpoint anterior e inicialização isolada de 13 serviços examinados em 15/11. Captura final ampliada selada e checksums conferidos no HD. Proprietário manteve o backup final só no HD: Windows final incompleto, novo ensaio integral dispensado antes de instalar. Proxmox instalado no SSD autorizado, SSH/HTTPS privados conferidos; segundo SSD desmontado e USBs desconectados. Restauração e retomada pendentes; prontidão de produção continua falsa |
+| D09 | Destino para recuperação e janela de migração | Checkpoint anterior e inicialização isolada de 13 serviços examinados em 15/11. Captura final ampliada selada e checksums conferidos no HD. Proprietário manteve o backup final só no HD: Windows final incompleto, novo ensaio integral dispensado antes de instalar. Proxmox instalado no SSD autorizado; segundo SSD desmontado e HD de 18 TB entregue exclusivamente ao core, com backup fora do export. Restauração e retomada pendentes; prontidão de produção continua falsa |
 | D10 | NAS dedicado e escolha de produto | Depois de confirmar recursos, GUI desejada, discos e rede; Linux NFS é o baseline, não decisão de comprar hardware |
 | D11 | Quais serviços merecem Kubernetes | Decidir por necessidade de operação/escala; Jellyfin, Arr e controlador não precisam migrar juntos |
 | D12 | Controle completo e visibilidade central | Requisito confirmado; proposta: Proxmox + Grafana + operação HomeServer em entrada privada; acesso direto Proxmox preservado |

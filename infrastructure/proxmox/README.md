@@ -20,20 +20,25 @@ receber métricas ou um volume não concede administração do Proxmox.
 O [roteiro de instalação assistida](../../docs/runbooks/proxmox-installation-handoff.md)
 registra a passagem física e a reconexão concluídas. As três VMs usam 11 GiB
 de RAM e discos virtuais de 160/80/16 GiB; o segundo SSD ext4 continua
-desmontado e os HDs USB desconectados. Nenhum disco físico foi alterado pelo
-bootstrap. A bridge privada tem NAT sem DNAT; o firewall legado está ativo
+desmontado. Após o bootstrap, o proprietário autorizou o HD de 18 TB
+exclusivamente no core, com inspeção RO antes de RW e preservação do conteúdo.
+A bridge privada tem NAT sem DNAT; o firewall legado está ativo
 para os guests e `enable: 0` no host preserva a gestão LAN como gap.
 O [runbook dos convidados](../../docs/runbooks/proxmox-guests.md) explica
 geração, preflight, aplicação e testes. O
 [estado atual](../../docs/implementation-status.md#vms-e-rede-privada)
 registra as provas TCP/pacotes e de reboot, com seus limites. Autostart ordenado,
-acesso e filtros persistiram após reboot; não há apps, Docker, GPU, USB ou
-NFS de mídia nos convidados.
+acesso e filtros persistiram após reboot. A
+[etapa de storage](../../docs/runbooks/storage-core-handoff.md) aplicou
+passthrough somente do dispositivo USB e NFS RO para playback; não há apps,
+Docker ou GPU nos convidados.
 Os valores privados permanecem fora deste repositório.
 
 - Os dois SSDs já estão identificados no inventário privado. Confrontar
   modelo/serial antes de futuras operações de disco. Preservar o segundo
-  SSD e todos os discos USB; a autorização não inclui esses dispositivos.
+  SSD e todos os discos USB; a autorização de instalação não os inclui.
+  A autorização posterior do HD de 18 TB limita-se ao passthrough, inspeção,
+  mount preservado e exportação, sem formatação ou reparo automático.
 - A instalação usou a arquitetura x86_64/amd64 para o processador Intel; a
   ISO local teve seu SHA-256 conferido conforme o roteiro. ARM64 não serve
   para este host; não há instalação adicional pendente nesta fase.
@@ -53,8 +58,9 @@ Os valores privados permanecem fora deste repositório.
   restrita e os fluxos reais das aplicações antes de expor playback. Portas
   testadas com listeners temporários não comprovam NFS RO nem autenticação.
   Manter acesso administrativo quando o core estiver indisponível.
-- Ensaiar USB passthrough, perda/retorno do disco, NFS e coordenação com as
-  pausas da aplicação. Não executar dois recuperadores concorrentes.
+- Preservar o passthrough e a prova NFS RO já aplicados; ensaiar perda/retorno
+  do disco e coordenação com as pausas da aplicação. Não executar dois
+  recuperadores concorrentes.
 
 O hub é uma dependência compartilhada. Expandir compute não replica o HD e não
 produz alta disponibilidade de dados. Leia também

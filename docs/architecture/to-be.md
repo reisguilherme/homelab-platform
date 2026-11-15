@@ -1,6 +1,6 @@
 # To-be do homelab
 
-Proposta de 14/11/2026, atualizada durante a implementação. O proprietário confirmou reprodução pública autenticada, administração privada, **Jellyfin sem escrita na mídia**, controle completo de VMs e reintegração automática do USB após falha. Nobreak é pendência de aquisição confirmada. Proxmox e as três VMs Ubuntu estão operantes, com QGA/SSH/NTP e rede privada filtrada. Os testes TCP e de pacotes passaram; autostart ordenado, acesso e filtros foram conferidos após reboot. Restrição da gestão na LAN, NFS, aplicações e retomada dos serviços continuam pendentes. Consulte o [estado da implementação](../implementation-status.md#vms-e-rede-privada).
+Proposta de 14/11/2026, atualizada durante a implementação. O proprietário confirmou reprodução pública autenticada, administração privada, **Jellyfin sem escrita na mídia**, controle completo de VMs e reintegração automática do USB após falha. Nobreak é pendência de aquisição confirmada. Proxmox e as três VMs Ubuntu estão operantes, com QGA/SSH/NTP e rede privada filtrada. Os testes TCP e de pacotes passaram; autostart ordenado, acesso e filtros foram conferidos após reboot. O HD de 18 TB pertence exclusivamente ao core, que exporta mídia NFS RO para playback com negações de escrita testadas em fixture. Restrição da gestão na LAN, aplicações, restauração e recuperação USB continuam pendentes. Consulte o [estado da implementação](../implementation-status.md#storage-no-core-e-nfs-ro).
 
 ## Fronteira entre plataforma e consumidor
 
@@ -28,8 +28,9 @@ Proxmox agenda e administra VMs. Kubernetes agenda pods dentro de VMs Linux que 
 
 O diagrama abaixo permanece o destino funcional. Na base já aplicada existem
 as três VMs e uma bridge privada com NAT, sem DNAT. Core → playback:8096 e
-playback → core:2049 passaram com listeners temporários; edge permanece sem
-acesso à playback. Ainda não há Jellyfin, proxy, NFS, mídia, GPU ou Docker nos
+playback → core:2049 passaram inicialmente com listeners temporários; a etapa
+posterior aplicou NFS RO real do core à playback. Edge permanece sem acesso
+à playback ou à mídia. Ainda não há Jellyfin, proxy, GPU ou Docker nos
 convidados. O firewall do host mantém a gestão LAN existente, sem restrição
 nova; não interpretar o diagrama como aceite de publicação.
 
@@ -103,7 +104,7 @@ Exclusões de mídia são solicitadas apenas pelo caminho administrativo privado
 | Proxmox e serviços de host | 3 GiB de orçamento | Reserva de capacidade do host | SSD, independente da VM storage |
 | Edge | 1 GiB | 1 | Disco virtual de 16 GiB; aplicação ainda ausente |
 | Playback | 4 GiB | 4 | Disco virtual de 80 GiB; aplicação/transcode ainda ausentes |
-| Core | 6 GiB | 4 | Disco virtual de 160 GiB; aplicação e USB ainda ausentes |
+| Core | 6 GiB | 4 | Disco virtual de 160 GiB e HD USB de 18 TB exclusivo; aplicação ainda ausente |
 | Margem após orçamento do host | 1,49 GiB | — | Absorver picos e medir antes de ampliar |
 
 As três VMs já receberam essas alocações, ainda sem carga de aplicações. O host tem **15,49 GiB utilizáveis** e 6 núcleos/12 threads; os convidados somam 11 GiB e 9 vCPU escalonadas, não núcleos adicionais. O pool inicial de **348,82 GiB** comporta os **256 GiB** virtuais planejados e deixa **92,82 GiB (26,61%)** de reserva pelo tamanho completo dos discos; uso físico thin e margem sob carga precisam ser acompanhados. Os cerca de 85 GiB livres na raiz pertencem ao inventário anterior ao bootstrap. Os dois SSDs de 512 GB estão identificados: Proxmox ocupa o SSD autorizado, e o segundo conserva o UUID ext4 de mídia, desmontado. Saúde e capacidade sob carga continuam pendentes. Não presumir RAID, pool conjunto ou 1 TB disponível; limitar transcode dentro da capacidade real. Mirror de dois SSDs de 512 GB teria aproximadamente a capacidade de um deles; soma de capacidade sem réplica aumenta o impacto da falha de qualquer disco.
@@ -142,6 +143,16 @@ Se o caminho público existente for reutilizável, mantê-lo após verificar iso
 Manter o login nativo compatível com TVs/celulares; MFA é prioritário para gestão, sem presumir que uma tela adicional no proxy funcione nos apps Jellyfin. Validar `Known Proxies`, cabeçalhos reescritos, WebSockets, Range/seek, legendas e revogação de tokens. Não registrar URLs com tokens. [Proxy Jellyfin](https://jellyfin.org/docs/general/post-install/networking/reverse-proxy/).
 
 ## 4. O hub de armazenamento
+
+A primeira conexão do hub já foi aplicada: HD de 18 TB exclusivo do core,
+ext4 RW local e somente `homeserver/media` exportado RO para playback. A
+playback lê por NFS 4.2 em `/srv/media-view/media`; backup e demais diretórios
+do HD ficam fora desse export. Leitura por UID 1000 e negações de escrita em
+fixture foram conferidas. O reboot do core preservou mount e NFS, com cliente
+desmontado antes e remontado manualmente depois. Aplicações e recuperação
+automática USB continuam pendentes. O
+[runbook de storage](../runbooks/storage-core-handoff.md) registra a entrega.
+O diagrama abaixo inclui os futuros consumidores e capacidades ainda propostas.
 
 ```mermaid
 flowchart LR

@@ -7,10 +7,11 @@ acessível pela rede privada está concluída.** Identidade SSH, sessão com cha
 dedicada e HTTPS foram conferidos. Depois, core, playback e edge foram criadas
 com Ubuntu 24.04, QGA, SSH e NTP operantes. A rede privada com NAT sem DNAT e
 filtros dos convidados passou pelos testes TCP e de pacotes registrados abaixo.
-O segundo SSD está desmontado com o mesmo UUID ext4 anterior; os HDs USB
-permanecem desconectados. Autostart ordenado, acesso e filtros foram conferidos
-após reboot. Restrição da gestão LAN, restauração, NFS e aplicações continuam
-pendentes; a prontidão de produção
+O segundo SSD está desmontado com o mesmo UUID ext4 anterior. Autostart
+ordenado, acesso e filtros foram conferidos após reboot. Na etapa posterior,
+o HD de 18 TB foi entregue exclusivamente ao core, com mount preservado e NFS
+RO para playback. Restrição da gestão LAN, restauração, aplicações e recuperação
+automática de USB continuam pendentes; a prontidão de produção
 permanece falsa. O
 [roteiro de instalação assistida](runbooks/proxmox-installation-handoff.md)
 preserva a preparação e a passagem realizadas.
@@ -23,8 +24,8 @@ preserva a preparação e a passagem realizadas.
 | Host Proxmox | Instalação no SSD autorizado, inventário e acesso privado SSH/HTTPS verificados; `vmbr0` preservada | Restringir gestão na LAN; o firewall do host mantém `enable: 0` |
 | VMs base | Core, playback e edge `running`, QGA/SSH/NTP operantes, cloud-init concluído; autostart ordenado conferido após reboot | Capacidade sob carga e prontidão das aplicações |
 | Rede dos convidados | Bridge privada, NAT sem DNAT, firewall legado ativo; provas TCP/pacotes e persistência dos filtros após reboot conferidas | Revisão da WAN dinâmica, restrição da gestão LAN e aceite dos fluxos de aplicações |
-| Aplicações | Ensaio histórico de mídia examinado; backup final selado e conferido no HD | Restaurar estado e validar retomada; sem Docker, apps, GPU, USB ou NFS de mídia nos guests |
-| Hub de arquivos | Modelo NFS e autoridade sobre mounts/exports | Consolidação verificada, exports/ACL e clientes reais |
+| Aplicações | Ensaio histórico de mídia examinado; backup final selado e conferido no HD | Restaurar estado e validar retomada; sem Docker, apps ou GPU nos guests |
+| Hub de arquivos | HD exclusivo do core; NFS RO restrito à playback; negações de escrita e reboot do core conferidos, cliente remontado manualmente | Guards das aplicações, recuperação USB automática e consolidação verificada |
 | Energia | Estados e regras de reintegração USB | Nobreak, comunicação, coordenação host/guest e teste de falhas |
 | K3s | Critérios de adoção e fronteiras | Recursos adicionais, implantação e contratos dos workloads |
 
@@ -156,6 +157,8 @@ na ficha e nas evidências privadas.
 
 ## VMs e rede privada
 
+Esta etapa precede a [entrega do storage](#storage-no-core-e-nfs-ro).
+
 O bootstrap autorizado criou três VMs Ubuntu 24.04 amd64 no PVE 9.2.2:
 
 | Papel | vCPU | RAM fixa | Disco virtual |
@@ -181,8 +184,8 @@ Cloud-init terminou com `errors: []` e somente o aviso de depreciação do campo
 `user` como string gerado pelo PVE, a revisar antes da versão 27.2.
 Após os testes iniciais, `onboot` foi habilitado na ordem **core → playback →
 edge**, com ordem inversa de desligamento. Isso ordena as VMs base; não espera
-readiness de NFS ou aplicações. Não há apps, Docker, GPU, USB ou NFS de mídia
-nos convidados.
+readiness de NFS ou aplicações. Ao fim dessa etapa ainda não havia apps,
+Docker, GPU, USB ou NFS de mídia nos convidados.
 
 `vmbr0` permaneceu intacta. A bridge privada fornece NAT de saída sem DNAT.
 O backend legado `pve-firewall` está `enabled/running`, com regras por VM;
@@ -207,15 +210,16 @@ VMs, com QGA respondendo. SSH por ProxyJump manteve as mesmas chaves; HTTPS
 do PVE respondeu `200` com CA e identidade IP/SAN validadas. Não houve units
 falhadas. As configurações de `vmbr0` e da bridge privada mantiveram seus hashes;
 NAT e guards `raw`/`ebtables` persistiram sem duplicatas. O segundo SSD manteve
-seu UUID e permaneceu desmontado; os USBs continuam desconectados. Os **21
+seu UUID e permaneceu desmontado; os USBs estavam desconectados. Os **21
 testes TCP** e DNS/HTTPS Ubuntu nos três convidados passaram novamente após
 o reboot. Os probes de quadros descritos acima são da rodada anterior; a
 verificação posterior conferiu a persistência das regras e repetiu a matriz TCP.
 
 Os endereços WAN atuais estão bloqueados no egress para evitar hairpin;
 revalidá-los quando mudarem e antes da publicação. A publicação continua
-fechada até aplicações, autenticação, mounts, ausência de mídia e NFS RO serem
-aceitos. Gestão LAN restrita, carga, GPU, recuperação USB e
+fechada até aplicações, autenticação e comportamento na ausência de mídia
+serem aceitos; a prova NFS RO posterior está abaixo. Gestão LAN restrita,
+carga, GPU, recuperação USB e
 nobreak mantêm suas pendências. Não há aceite de isolamento absoluto ou HA;
 `production_ready` e `partial_restart_safe` continuam falsos. A escolha de
 backup final somente no HD de 18 TB e o alcance das provas anteriores permanecem.
@@ -223,6 +227,48 @@ backup final somente no HD de 18 TB e o alcance das provas anteriores permanecem
 A validação local deste bootstrap em Python 3.12/Linux passou com **94 testes**,
 Ruff, formatação, AST e validação de contrato/catálogo. Esses checks locais
 complementam as provas do host descritas acima; não iniciaram as aplicações.
+
+## Storage no core e NFS RO
+
+O proprietário autorizou a entrega exclusiva do HD de 18 TB ao core e o
+reconectou. Modelo, serial, UUID e capacidade coincidiram no host e no guest;
+somente o dispositivo USB foi passado por porta dedicada, preservando a
+Ethernet USB no host. SMART passou, sem realocados, pendentes, incorrigíveis
+ou CRC nos atributos examinados.
+
+A inspeção usou bloco RO e `ro,noload`. O hash do recibo coincidiu com a
+evidência anterior à instalação; 21 hashes de metadados e os tamanhos dos
+cinco tar foram conferidos, **sem rehash dos cinco tar nesta etapa**.
+Depois de desmontar, o mount RW novo com `errors=remount-ro` completou o
+replay do journal, sem erros I/O/ext4 observados. Paths e permissões foram
+preservados. Foi acrescentada somente a linha desse UUID ao `fstab` do core,
+com `nofail`, timeout de 60 segundos e `pass=0`, sem fsck automático.
+
+NFS 4.1/4.2 sobre TCP 2049 exporta somente `homeserver/media` para playback,
+com `ro`, `all_squash` para UID/GID 1000, `subtree_check`, guard `mountpoint`
+e `fsid=0`. O cliente NFS 4.2 usa `ro,hard,noauto` em `/srv/media-view/media`.
+Um drop-in da unit NFS existente no core exige e acompanha o mount local;
+as dependências foram conferidas, sem nova unit no host Proxmox. Portas TCP
+dinâmicas internas de `rpc.mountd` permanecem bloqueadas pelo firewall.
+Com cliente de teste RW, criar, acrescentar conteúdo, alterar permissões e
+remover uma fixture retornaram `EROFS`; leitura por UID 1000 passou. O
+namespace não expôs o backup. A fixture própria foi removida, restando somente
+`movies` e `tv` visíveis. O
+[runbook de storage](runbooks/storage-core-handoff.md) detalha o alcance.
+
+O reboot do core terminou às **23:11:20 UTC de 15/11**, com boot ID diferente,
+identidades preservadas, mount local RW automático, NFS 4.1/4.2 ativo e
+dependências do drop-in mantidas. Não houve units falhadas ou erros I/O/ext4
+observados, e o hash do recibo permaneceu igual. A playback foi desmontada
+limpamente antes e remontada manualmente RO depois; `noauto` permanece.
+Uma leitura UID 1000 de **64 KiB de um arquivo real** coincidiu por hash com o
+core antes/depois, sem leitura integral do arquivo ou teste de reprodução.
+Isso não demonstra recuperação automática após falha física do USB.
+
+Não houve restauração das aplicações, Docker, GPU, migração ou verificação
+global do acervo. Recuperação USB e guards de ausência de mídia nas aplicações
+continuam pendentes; `production_ready` e `partial_restart_safe` permanecem
+falsos. O backup final único no HD mantém a estratégia e os limites anteriores.
 
 ## Verificação histórica da separação
 

@@ -13,8 +13,12 @@ próprios; o catálogo aponta para commits imutáveis e distingue proposta de ex
   de sistema identificado na ficha privada para instalar Proxmox. Preservar o
   segundo SSD e todos os discos USB. O proprietário instalou Proxmox no SSD
   autorizado; identidade do host e acesso SSH/HTTPS foram conferidos. Core,
-  playback e edge já executam Ubuntu com QGA/SSH/NTP, sem apps, Docker, GPU,
-  USB ou NFS de mídia. A rede privada tem NAT sem DNAT e filtros testados;
+  playback e edge já executam Ubuntu com QGA/SSH/NTP, sem apps, Docker ou GPU.
+  O proprietário autorizou depois a entrega exclusiva do HD de 18 TB ao core,
+  com inspeção RO antes de RW. O passthrough do dispositivo e o NFS RO para
+  playback foram aplicados, preservando o adaptador Ethernet USB e o acervo.
+  Seguir o [runbook de storage](docs/runbooks/storage-core-handoff.md).
+  A rede privada tem NAT sem DNAT e filtros testados;
   autostart ordenado, acesso e filtros persistiram após reboot. A restrição
   da gestão na LAN continua pendente.
   Confira o [estado de implementação](docs/implementation-status.md#vms-e-rede-privada).
@@ -25,9 +29,9 @@ próprios; o catálogo aponta para commits imutáveis e distingue proposta de ex
   manter ali a única cópia final completa e prosseguir; a transferência Windows
   foi interrompida e seus parciais não servem para restauração. Não reexigir
   segunda cópia ou novo ensaio integral como condição para instalar. O
-  checkpoint anterior permanece intacto. Restauração, mounts, aplicações e
-  publicação continuam pendentes; testes com listeners não comprovam NFS RO
-  ou Jellyfin funcionando.
+  checkpoint anterior permanece intacto. Restauração, guards das aplicações,
+  recuperação USB e publicação continuam pendentes. A prova NFS RO usou
+  fixture sintética; não comprova Jellyfin funcionando ou integridade global.
 - Dispositivos e escopo exatos precisam de autorização antes de alteração
   destrutiva. Preservar o acervo, origens e pausas manuais; não limpar mídia.
 - Não substituir fstab inteiro, ativar RTX, reescrever serviço Lenovo, abrir
@@ -41,8 +45,9 @@ próprios; o catálogo aponta para commits imutáveis e distingue proposta de ex
   separado; não faz deploy nem coleta inventário. Seguir o
   [runbook de guests](docs/runbooks/proxmox-guests.md), preservar `vmbr0` e
   não reaplicar o bootstrap sobre IDs/bridge existentes. Valores reais ficam
-  privados. Publicação permanece fechada até os aceites de apps, autenticação,
-  mounts e mídia RO; não interpretar a liberação de uma porta como esses aceites.
+  privados. Publicação permanece fechada até os aceites de apps, autenticação
+  e falha/retorno dos mounts; preservar o NFS RO já testado. Não interpretar
+  a liberação de uma porta como esses aceites.
 
 ## Fronteiras
 

@@ -10,7 +10,9 @@ infraestrutura.
 playback e edge têm QGA, SSH e NTP conferidos. A bridge de gestão foi preservada;
 NAT sem DNAT e filtros dos convidados passaram pelos testes TCP e de pacotes
 registrados. O reboot confirmou autostart ordenado, acesso e persistência dos
-filtros. Restauração, NFS, aplicações e publicação continuam pendentes.
+filtros. O HD de 18 TB pertence exclusivamente ao core; playback já lê mídia
+por NFS RO, com escrita negada em fixture. Restauração, aplicações, recuperação
+USB e publicação continuam pendentes.
 Prometheus/Grafana estão preparados; K3s é futuro.
 O [gerador de bootstrap](scripts/proxmox_bootstrap.py) produz um bundle offline,
 sem deploy; publicar arquivos não aplica alterações ao servidor.
@@ -42,6 +44,7 @@ flowchart TB
 | [Proxmox](infrastructure/proxmox/README.md) | Host, convidados e limites atuais de rede |
 | [Instalação assistida](docs/runbooks/proxmox-installation-handoff.md) | Histórico da preparação, instalação e reconexão privada verificada |
 | [VMs e rede privada](docs/runbooks/proxmox-guests.md) | Estado real, testes, geração offline, preflight e aplicação controlada |
+| [Storage no core](docs/runbooks/storage-core-handoff.md) | Identidade do HD, mount preservado e NFS RO para playback; alcance dos testes |
 | [K3s](infrastructure/k3s/README.md) | Entrada posterior e fronteira com o hipervisor |
 
 O [repositório de mídia](https://github.com/reisguilherme/homelab-mediaserver/tree/refactor)
@@ -95,9 +98,10 @@ identificado e acessível por SSH/HTTPS está concluída, conforme o
 A captura final tem checksums conferidos no HD de 18 TB. O proprietário
 decidiu prosseguir com essa única cópia completa: a transferência Windows foi
 interrompida e está incompleta; novo ensaio integral não é pré-requisito para
-instalar. O segundo SSD mantém o UUID ext4 anterior e está desmontado; os HDs
-USB permanecem desconectados. As três VMs receberam somente o sistema base;
-aplicações, Docker, GPU e mídia ainda não foram implantados. O firewall legado
+instalar. O segundo SSD mantém o UUID ext4 anterior e está desmontado. O HD
+de 18 TB foi reconectado e entregue ao core, com exportação de mídia RO para
+playback; o backup ficou fora do export. Aplicações, Docker e GPU ainda não
+foram implantados. O firewall legado
 dos convidados está ativo, mas o firewall do host mantém `enable: 0`; a
 restrição da gestão na LAN continua pendente. A inicialização
 isolada da mídia já foi examinada, com os limites do [registro de implementação](docs/implementation-status.md).

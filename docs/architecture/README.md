@@ -13,17 +13,19 @@ por SSH/HTTPS foram conferidos. A entrega do host está concluída conforme o
 captura tem checksums conferidos no HD de 18 TB. O proprietário escolheu
 prosseguir mantendo o backup final somente nesse HD; a transferência Windows
 foi interrompida, incompleta, e novo ensaio integral não será exigido antes de
-instalar. O segundo SSD mantém seu UUID ext4 e está desmontado; os HDs USB
-estão desconectados. As três VMs base já executam Ubuntu, com rede privada
-filtrada e autostart conferido após reboot. Restauração, NFS, aplicações e
-restrição da gestão na LAN continuam pendentes, conforme o
-[estado atual](../implementation-status.md#vms-e-rede-privada).
+instalar. O segundo SSD mantém seu UUID ext4 e está desmontado. As três VMs
+base já executam Ubuntu, com rede privada filtrada e autostart conferido após
+reboot. O HD de 18 TB foi depois entregue exclusivamente ao core, com mídia
+exportada RO para playback e escrita negada em fixture. Restauração,
+aplicações, recuperação USB e restrição da gestão na LAN continuam pendentes,
+conforme o [estado atual](../implementation-status.md#storage-no-core-e-nfs-ro).
 A posse dos repositórios não implanta a nova topologia.
 
 A base aplicada é **um nó Proxmox e três VMs: entrada, reprodução e núcleo
-privado**. Compose, storage e aplicações ainda serão implantados nos convidados.
-O destino funcional mantém storage e automação de mídia próximos para preservar
-as garantias atuais; Jellyfin receberá mídia RO.
+privado**. O core já concentra o mount local e exporta mídia RO para playback;
+Compose e aplicações ainda serão implantados. O destino funcional mantém
+storage e automação de mídia próximos para preservar as garantias atuais;
+Jellyfin receberá a mídia RO já disponível à sua VM.
 NAS dedicado e K3s são evoluções condicionadas a recursos, contratos e ensaios.
 
 | Documento | Conteúdo |
@@ -38,6 +40,7 @@ NAS dedicado e K3s são evoluções condicionadas a recursos, contratos e ensaio
 | [Contrato de integração](../integration-contract.md) | Schema e validação local; limites de autorização e readiness |
 | [Observabilidade preparada](../observability.md) | Configuração central opt-in e integração com exporters |
 | [Instalação assistida](../runbooks/proxmox-installation-handoff.md) | Histórico da passagem física e entrega do host com SSH/HTTPS verificados |
+| [Storage no core](../runbooks/storage-core-handoff.md) | HD preservado, export NFS RO e limites das provas de leitura/escrita |
 
 Os diagramas ficam em Mermaid junto ao texto. Não há cópia do HTML antigo nem
 dependência de um render local para ler esta arquitetura.
@@ -47,11 +50,11 @@ dependência de um render local para ler esta arquitetura.
 | Item | Estado |
 |---|---|
 | Compute observado | i7-10750H, 6 núcleos/12 threads, 15,49 GiB utilizáveis; três VMs com 11 GiB de RAM e 256 GiB de discos virtuais; reserva planejada de 92,82 GiB no pool inicial; segundo SSD ext4 desmontado; capacidade sob carga ainda exige validação |
-| Mídia informada | HD USB de 18 TB; a observação anterior ainda encontrou quatro volumes na união |
+| Mídia observada | HD USB de 18 TB entregue exclusivamente ao core, NFS RO para playback; a união histórica de quatro volumes não foi migrada integralmente |
 | Demanda | Até dez reproduções, upload anunciado de 300 Mbit/s; desempenho não medido |
 | Internet | IP público relatado; CGNAT, IPv6 e acesso externo não comprovados |
 | Público | Jellyfin com login individual; administração privada |
-| Escrita Jellyfin | As-is permite edições/legendas; **to-be confirmado** é mídia RO e alterações privadas |
+| Escrita Jellyfin | As-is permite edições/legendas; NFS RO já testado na playback, aplicação e fluxo privado de alterações ainda pendentes |
 | Administração | Proxmox e três VMs criadas, SSH/HTTPS privados verificados; gestão LAN restrita, ACLs delegadas, Grafana e operações da aplicação ainda pendentes |
 | Energia | Notebook na bateria e fonte do USB sem AC relatados; ensaio físico pendente |
 | Recuperação | Reintegração automática exigida após validações; identidade, integridade ou readiness incertas bloqueiam retomada |
