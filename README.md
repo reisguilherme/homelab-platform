@@ -34,6 +34,7 @@ flowchart TB
 | [Observabilidade](docs/observability.md) | Grafana/Prometheus, alvos opt-in, diretórios e limites |
 | [Estado da implementação](docs/implementation-status.md) | O que existe no código e o que falta comprovar no servidor |
 | [Proxmox](infrastructure/proxmox/README.md) | Escopo e dependências da futura implantação |
+| [Instalação assistida](docs/runbooks/proxmox-installation-handoff.md) | Preparação, passagem física e reconexão privada; instalação ainda condicionada às pendências |
 | [K3s](infrastructure/k3s/README.md) | Entrada posterior e fronteira com o hipervisor |
 
 O [repositório de mídia](https://github.com/reisguilherme/homelab-mediaserver/tree/refactor)
@@ -78,6 +79,11 @@ de declarar conformidade com o isolamento proposto.
 
 Não há automação de instalação do hipervisor, CI/CD, gerenciador de backups,
 releases próprias ou units do host. As instruções de observabilidade são opt-in.
-O servidor e o acervo permanecem no estado atual até a janela liberada pelo
-proprietário. Disco único, USB e hub único continuam pontos de falha; adquirir
+O proprietário autorizou indisponibilidade. O checkpoint anterior de mídia
+teve retorno dos serviços; a captura final ampliada já foi selada, com os 22
+containers antes ativos mantidos parados e SSH disponível no host Ubuntu.
+A instalação do Proxmox depende do SSD/escopo autorizados e da segunda cópia
+e restauração desse conjunto verificadas. A inicialização
+isolada da mídia já foi examinada, com os limites do [registro de implementação](docs/implementation-status.md).
+Disco único, USB e hub único continuam pontos de falha; adquirir
 o nobreak e ensaiar recuperação são pendências do desenho.

@@ -2,8 +2,13 @@
 
 Fonte canônica da arquitetura geral a partir de 14/11/2026. A separação entre
 plataforma e projetos foi aprovada; publicar estes arquivos não instala Proxmox,
-VMs, K3s, storage remoto ou serviços. O corte operacional aguarda aviso do
-proprietário. O hardware e o runtime não mudam por causa da posse dos repositórios.
+VMs, K3s, storage remoto ou serviços. O proprietário autorizou indisponibilidade
+em 15/11/2026; a inicialização da mídia já foi examinada em clones isolados,
+com limites descritos no [estado da implementação](../implementation-status.md).
+A captura final do host, projetos e sete volumes foi selada; os 22 containers
+antes ativos continuam parados, e o host permanece acessível por SSH. A
+instalação depende da segunda cópia e restauração final verificadas, além do
+SSD/escopo autorizados. A posse dos repositórios não implanta a nova topologia.
 
 A proposta inicial continua sendo **um nó Proxmox e três VMs: entrada, reprodução
 e núcleo privado**, com Compose nos convidados. O núcleo mantém storage e automação
@@ -21,6 +26,7 @@ NAS dedicado e K3s são evoluções condicionadas a recursos, contratos e ensaio
 | [Repositórios](../repositories.md) | Fonte de cada artefato e contrato obrigatório dos consumidores |
 | [Contrato de integração](../integration-contract.md) | Schema e validação local; limites de autorização e readiness |
 | [Observabilidade preparada](../observability.md) | Configuração central opt-in e integração com exporters |
+| [Instalação assistida](../runbooks/proxmox-installation-handoff.md) | Passagem física, proteção dos discos e reconexão ao host; pendências antes de apagar Ubuntu |
 
 Os diagramas ficam em Mermaid junto ao texto. Não há cópia do HTML antigo nem
 dependência de um render local para ler esta arquitetura.
@@ -29,7 +35,7 @@ dependência de um render local para ler esta arquitetura.
 
 | Item | Estado |
 |---|---|
-| Compute informado | i7-10750H, 16 GB DDR4 e dois SSDs de 512 GB; layout e margem exigem validação |
+| Compute informado | i7-10750H, 16 GB DDR4; dois SSDs de 512 GB identificados no inventário privado, ocupados por sistema e mídia; saúde e margem exigem validação |
 | Mídia informada | HD USB de 18 TB; a observação anterior ainda encontrou quatro volumes na união |
 | Demanda | Até dez reproduções, upload anunciado de 300 Mbit/s; desempenho não medido |
 | Internet | IP público relatado; CGNAT, IPv6 e acesso externo não comprovados |
@@ -75,8 +81,12 @@ verificação contínua de versões ou novas recomendações de compra.
 
 A análise original era estática e usava um working tree extenso; uma preparação
 posterior registrou SSH, checks locais e checkpoint privado. O [as-is](as-is.md)
-distingue essas evidências. Checkpoint de configuração não inclui bancos nem
-substitui estado consistente e restauração isolada. A presente separação não
+distingue essas evidências. O checkpoint inicial de configuração não incluía
+bancos. O checkpoint operacional posterior, referenciado no as-is, conferiu
+cópia Windows, arquivos restaurados e 11 SQLite. Naquela etapa não iniciou
+aplicações da restauração; o ensaio posterior examinou 13 serviços em clones,
+conforme o as-is. O conjunto final posterior já foi capturado, mas sua cópia
+completa Windows e restauração ainda não foram aceitas. A presente separação não
 repete SSH, inventário, scan de imagens, pentest ou ensaios físicos. Testes locais
 não comprovam Tailscale, firewall, USB, GPU, WAN ou reprodução em clientes.
 

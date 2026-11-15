@@ -12,10 +12,23 @@ receber métricas ou um volume não concede administração do Proxmox.
 
 ## Antes da implantação
 
-- Inventariar os dois SSDs e confirmar o dispositivo e o escopo exatos de qualquer
-  sobrescrita. A autorização geral para refatorar não identifica esse dispositivo.
-- Concluir a reconciliação do acervo e produzir/restaurar o conjunto consistente
-  de bancos, configuração e estado, em destinos independentes.
+O [roteiro de instalação assistida](../../docs/runbooks/proxmox-installation-handoff.md)
+prepara a passagem física e a reconexão por Ethernet/SSH. Ainda não libera
+apagar o Ubuntu nem contém os valores privados do host.
+
+- Os dois SSDs já estão identificados no inventário privado. Confrontar
+  modelo/serial do candidato no instalador e obter autorização de sobrescrita
+  do dispositivo/escopo exatos após fechar a preservação. A autorização geral
+  para refatorar não autoriza apagar o sistema.
+- Usar a ISO x86_64/amd64 para o processador Intel; a imagem ARM64 não serve
+  para este host. O arquivo local já teve seu SHA-256 conferido conforme o
+  roteiro. A gravação do pendrive e o teste de boot ainda não foram verificados.
+- Aproveitar o checkpoint de mídia restaurado e o ensaio de inicialização
+  isolada já registrado, com seus limites. A captura final, incluindo o outro
+  projeto e os sete volumes, foi selada. Os 22 containers antes ativos seguem
+  parados; concluir e verificar a cópia Windows e a restauração do novo conjunto.
+  A reconciliação do acervo e o reparo continuam no projeto consumidor; não
+  reativar workers históricos inativos apenas para completar a instalação.
 - Medir RAM disponível e consumo sob carga. O orçamento nominal do desenho deve
   ser ajustado à memória utilizável, ao cache e ao pico de transcode.
 - Provar bridges/firewall, acesso privado ao console e rollback antes de expor

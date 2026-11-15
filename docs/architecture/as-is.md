@@ -12,7 +12,7 @@ observabilidade compartilhada; mídia continua no consumidor. Essa mudança não
 cria VMs, exports, isolamento ou readiness no servidor. Confira as
 [fronteiras dos repositórios](../repositories.md).
 
-## Observação anterior e preparação, sem novo acesso
+## Registros de preparação e evidências operacionais
 
 O [registro anterior de preparação](https://github.com/reisguilherme/homelab-mediaserver/blob/8627cd8ff76411831c95eb0072f88998c27469e0/docs/architecture/homelab-2026/implementation-status.md)
 relata inspeção por SSH de Ubuntu 24.04.5, virtualização disponível, quatro volumes
@@ -22,11 +22,37 @@ Esses fatos datados não são inventário atualizado nem prova de integridade gl
 A proposta de um único USB não descreve automaticamente a implantação encontrada.
 
 O registro também documenta checkpoint privado de código/configuração, verificado
-em dois destinos. Ele **não inclui bancos nem constitui cópia consistente de todas
-as aplicações**. Cópia final sob quiescência e restauração isolada continuam pendentes.
-Nenhum conteúdo privado desse checkpoint é copiado para a plataforma. A separação
-atual não realizou SSH, mutação de runtime ou inspeção de dados; o corte aguarda
-aviso do proprietário e escopo operacional próprio.
+em dois destinos. Aquele checkpoint **não incluía bancos nem constituía cópia
+consistente de todas as aplicações**. A separação de repositórios não realizou
+SSH, mutação de runtime ou inspeção de dados.
+
+Posteriormente, o proprietário autorizou indisponibilidade. O
+[checkpoint operacional de 15/11, commit c2973a4](https://github.com/reisguilherme/homelab-mediaserver/blob/c2973a4bbbe51209e1e0895ab2be79fc552b6723/docs/runbooks/operational-checkpoint-execution.md)
+capturou o conjunto de mídia sob quiescência, conferiu a cópia Windows e os
+arquivos restaurados em ext4, com 11 bancos SQLite íntegros e 42 imagens
+importadas em daemon isolado. Os mesmos 21 serviços retornaram; os nove já
+parados, o outro projeto, as montagens e a manutenção foram preservados.
+Cron e recuperação USB voltaram, com USB habilitado em `ready`. Naquela etapa
+nenhuma aplicação foi iniciada a partir da restauração.
+
+No [ensaio posterior em clones isolados](https://github.com/reisguilherme/homelab-mediaserver/blob/refactor/docs/runbooks/proxmox-preinstallation.md),
+13 serviços foram examinados: onze responderam HTTP `200`, e dois componentes
+de segurança negaram o cliente não confiável com `403`. As contagens de
+catálogo monitoradas não mudaram; os SQLite examinados passaram após a parada
+e os daemons de teste foram encerrados. Esse ensaio curto de inicialização
+não aceitou reprodução, GPU ou integração completa; `production_ready` e
+`partial_restart_safe` permanecem falsos.
+
+Às 18:08 de São Paulo, em 15/11, a captura final ampliada foi selada com origem
+estável, incluindo o outro projeto, configurações do host e os sete volumes
+Docker. O conjunto cobre 36 containers: os 22 ativos foram parados de forma
+limpa e continuam parados; os 14 já inativos foram mantidos. O host segue
+ligado e acessível por SSH. A cópia completa no Windows está em transferência,
+ainda sem aceite, e a restauração final permanece pendente. Nenhum conteúdo
+privado é copiado para a plataforma. O
+[roteiro de instalação](../runbooks/proxmox-installation-handoff.md) ainda exige
+autorização de sobrescrita do SSD candidato, já identificado no inventário
+privado, após fechar a preservação necessária.
 
 ## Contexto declarado e alcance da evidência
 
@@ -173,13 +199,13 @@ Fonte: [distinção de caminhos](https://github.com/reisguilherme/homelab-medias
 
 Há snapshots de host, status web e heartbeat do controle. O commit de referência já prepara exporter de snapshots e um Compose opt-in com Prometheus/Grafana; preparação de arquivos não comprova instalação. Nesta separação Prometheus/Grafana passam à plataforma e o exporter permanece no consumidor. A outbox de notificações tem código de deduplicação/retry; não foi encontrado seu consumidor ativo no fluxo inspecionado. Logs locais rotacionados não compõem histórico central ou auditoria de VMs. As evidências e os gaps estão em [operação e governança](operations.md#3-evidência-estática-e-preparação-atual).
 
-O mecanismo USB opt-in já aceita somente `hdd3`, guarda estado, verifica identidade/geração, para consumidores locais e os retoma após conferir mounts e autorizações. O instalador agenda cron por minuto; transições/debounce podem levar vários minutos. Não há comprovação de instalação/ativação real. O usuário relata perda de energia na fonte AC do HD enquanto o notebook continua na bateria, condição que esse código não previne.
+O mecanismo USB opt-in já aceita somente `hdd3`, guarda estado, verifica identidade/geração, para consumidores locais e os retoma após conferir mounts e autorizações. O instalador agenda cron por minuto; transições/debounce podem levar vários minutos. A análise estática não comprovava instalação/ativação; o checkpoint anterior de mídia confirmou o retorno do mecanismo habilitado em `ready`, sem ensaiar perda/retorno físicos. Esse retorno antecede a captura final e não descreve a parada atual. O usuário relata perda de energia na fonte AC do HD enquanto o notebook continua na bateria, condição que esse código não previne.
 
 A recuperação atual coordena Docker e mounts no mesmo domínio, sem reanexação Proxmox ou clientes NFS. A prova de payload concluído verifica presença e tamanho, não integridade dos bytes. Chamadas síncronas de filesystem podem bloquear o processo de recuperação; testes existentes não demonstram solução para D-state físico. [Auditoria, links ao código e contrato futuro](power-recovery.md#2-o-que-o-projeto-já-implementa).
 
 ## O que permanece sem comprovação
 
-A inspeção anterior identificou overrides privados ativos e alguns checks locais; não se presume que tenham sido preservados ou revalidados por esta entrega. Identidade/saúde completa dos discos, capacidade admissível, mounts e permissões efetivos ainda precisam de validação para o corte.
+A inspeção anterior identificou overrides privados ativos e alguns checks locais; o checkpoint posterior preservou o conjunto declarado, conforme a evidência datada acima. Os dois SSDs já foram identificados no inventário privado. Saúde completa dos discos, capacidade admissível, mounts e permissões efetivos ainda precisam de validação para o corte.
 Não há nesta análise medição de reprodução concorrente, aceleração Intel, CPU, RAM, rede, upload ou recuperação USB.
 Também não há validação de acesso externo, TLS, Tailscale, portas efetivamente alcançáveis ou situação de CGNAT.
 As evidências acima sustentam o desenho existente e seus contratos; a validação do ambiente requer uma etapa separada.

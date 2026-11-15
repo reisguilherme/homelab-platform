@@ -2,6 +2,18 @@
 
 Data: 14/11/2026. Este backlog descreve trabalho futuro e evidência necessária. Não constitui autorização para modificar mounts, dispositivos, firewall do roteador ou serviços em produção. Esta separação prepara documentação, contratos e configuração opt-in; não implanta a topologia nem comprova os requisitos de runtime. Prioridades indicam dependência e impacto; não estimam esforço sem ensaio.
 
+Atualização de 15/11: indisponibilidade autorizada e checkpoint de mídia com
+cópia Windows, arquivos restaurados e 11 SQLite verificados, conforme o
+[estado da implementação](../implementation-status.md). Esse avanço atende
+parte de G08. O ensaio posterior examinou a inicialização de 13 serviços em
+clones, sem mudança nas contagens de catálogo monitoradas; não aceitou
+integração completa ou produção. A captura final ampliada foi selada com os
+sete volumes e o outro projeto; os 22 containers antes ativos continuam
+parados, com SSH disponível no host. Cópia completa Windows, restauração final
+e SSD/escopo autorizados continuam necessários para a instalação. O
+[roteiro de passagem](../runbooks/proxmox-installation-handoff.md) organiza essas
+pendências sem repetir o ensaio do arquivo intacto ou iniciar workers históricos.
+
 ## 1. Gaps priorizados
 
 | ID | Prioridade e momento | As-is → resultado necessário | Critério de aceite |
@@ -87,7 +99,7 @@ As mudanças futuras devem preservar os testes de download protegido, importaç�
 
 ## 4. Migração proposta e pontos de retorno
 
-1. **Descobrir sem mutar:** conferir layout, espaço, dependências e acesso privado; escolher destino de cópia consistente. O USB de mídia não deve ser a única cópia do estado crítico que depende dele. Identificar se algum SSD está em uso para SO/dados; instalar Proxmox pode sobrescrever o disco escolhido.
+1. **Descobrir sem mutar:** conferir layout, espaço, dependências e acesso privado; escolher destino de cópia consistente. O USB de mídia não deve ser a única cópia do estado crítico que depende dele. Os SSDs de sistema e mídia já foram identificados no inventário privado; revalidar modelo/serial no instalador e autorizar o candidato exato após fechar a preservação.
 2. **Preparar ensaio:** construir a divisão de configuração em área isolada com dados sintéticos ou cópias privadas consistentes. Definir dispositivos exatos e janela antes de qualquer instalação, montagem ou passthrough. Não usar o plano histórico de consolidação de discos como autorização para esta migração.
 3. **Preparar retorno:** preservar imagens, configuração, versões de DB e montagem original. Snapshots de VM não devem ser considerados cópia do USB em passthrough. Conferir leitura da cópia e restauração isolada antes do corte.
 4. **Quiescer escritores:** suspender aquisições e tarefas que escrevem; preservar pausas manuais. Parar processos que alteram DB antes da cópia consistente, incluindo WAL/journals ou API de backup apropriada. Não copiar apenas um `.sqlite` ativo e ignorar seu WAL.
@@ -110,7 +122,7 @@ As mudanças futuras devem preservar os testes de download protegido, importaç�
 | D06 | Entrada pública existente, encaminhamento ou VPS/túnel | Pendente de inspeção IP/CGNAT/IPv6 e equipamento de rede; nenhuma porta nova autorizada aqui |
 | D07 | Permissões, interface e escopo da edição privada | Definir equivalentes de edição/legendas e confirmação destrutiva em origem independente; autenticação nativa Jellyfin sozinha não autoriza exclusão no core |
 | D08 | RPO/RTO de estado e mídia | Proprietário deve definir perda de dados e tempo de parada aceitáveis; acervo recuperável e material insubstituível podem ter políticas diferentes |
-| D09 | Destino independente para recuperação e janela de migração | Autorizadas cópias privadas no HD de 18 TB e Windows; checkpoint de configuração verificado. Cópia consistente final e teste de retorno pendentes. O proprietário avisará quando puder haver parada |
+| D09 | Destino independente para recuperação e janela de migração | Checkpoint anterior e inicialização isolada de 13 serviços examinados em 15/11. Captura final ampliada selada; 22 containers mantidos parados com SSH disponível. Cópia Windows e restauração do novo conjunto pendentes; SSD/escopo exigem autorização própria; prontidão de produção continua falsa |
 | D10 | NAS dedicado e escolha de produto | Depois de confirmar recursos, GUI desejada, discos e rede; Linux NFS é o baseline, não decisão de comprar hardware |
 | D11 | Quais serviços merecem Kubernetes | Decidir por necessidade de operação/escala; Jellyfin, Arr e controlador não precisam migrar juntos |
 | D12 | Controle completo e visibilidade central | Requisito confirmado; proposta: Proxmox + Grafana + operação HomeServer em entrada privada; acesso direto Proxmox preservado |
