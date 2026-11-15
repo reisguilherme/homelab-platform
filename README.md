@@ -6,18 +6,22 @@ de compute, redes, armazenamento, acessos e energia. As aplicações mantêm seu
 próprios repositórios e entregam os manifests e as integrações que consomem essa
 infraestrutura.
 
-**Estado: host Proxmox instalado e acesso privado verificado.** A instalação
-foi realizada pelo proprietário; SSH e HTTPS foram conferidos em 15/11/2026.
-VMs, restauração, firewall, hub NFS e serviços continuam pendentes. Prometheus/
-Grafana e o validador local estão preparados na branch `refactor`; K3s é futuro.
-Publicar estes arquivos não aplica a topologia ao servidor.
+**Estado: host Proxmox e três VMs Ubuntu operantes em rede privada.** Core,
+playback e edge têm QGA, SSH e NTP conferidos. A bridge de gestão foi preservada;
+NAT sem DNAT e filtros dos convidados passaram pelos testes TCP e de pacotes
+registrados. O reboot confirmou autostart ordenado, acesso e persistência dos
+filtros. Restauração, NFS, aplicações e publicação continuam pendentes.
+Prometheus/Grafana estão preparados; K3s é futuro.
+O [gerador de bootstrap](scripts/proxmox_bootstrap.py) produz um bundle offline,
+sem deploy; publicar arquivos não aplica alterações ao servidor.
 
 ```mermaid
 flowchart TB
   P[homelab-platform] --> A[Arquitetura e políticas]
   P --> C[Contratos e catálogo por commit]
   P --> O[Prometheus e Grafana privados]
-  P -. evolução sobre o host Proxmox instalado .-> I[VMs, rede, storage e energia]
+  P --> I[Proxmox e três VMs / rede privada aplicada]
+  I -. próximos passos .-> S[Storage, aplicações e energia]
   M[homelab-mediaserver] -->|declara integração| C
   M -->|exporter e dashboard de mídia| O
   F[Outros projetos: Immich etc.] -. contrato próprio .-> C
@@ -35,8 +39,9 @@ flowchart TB
 | [Contrato de integração](docs/integration-contract.md) | Recursos, rede, storage, telemetria, segredos e recuperação |
 | [Observabilidade](docs/observability.md) | Grafana/Prometheus, alvos opt-in, diretórios e limites |
 | [Estado da implementação](docs/implementation-status.md) | O que existe no código e o que falta comprovar no servidor |
-| [Proxmox](infrastructure/proxmox/README.md) | Host entregue e escopo das VMs e do isolamento pendentes |
+| [Proxmox](infrastructure/proxmox/README.md) | Host, convidados e limites atuais de rede |
 | [Instalação assistida](docs/runbooks/proxmox-installation-handoff.md) | Histórico da preparação, instalação e reconexão privada verificada |
+| [VMs e rede privada](docs/runbooks/proxmox-guests.md) | Estado real, testes, geração offline, preflight e aplicação controlada |
 | [K3s](infrastructure/k3s/README.md) | Entrada posterior e fronteira com o hipervisor |
 
 O [repositório de mídia](https://github.com/reisguilherme/homelab-mediaserver/tree/refactor)
@@ -91,8 +96,10 @@ A captura final tem checksums conferidos no HD de 18 TB. O proprietário
 decidiu prosseguir com essa única cópia completa: a transferência Windows foi
 interrompida e está incompleta; novo ensaio integral não é pré-requisito para
 instalar. O segundo SSD mantém o UUID ext4 anterior e está desmontado; os HDs
-USB permanecem desconectados. Ainda não foram criadas VMs ou retomados serviços,
-e não há regras de firewall configuradas. A inicialização
+USB permanecem desconectados. As três VMs receberam somente o sistema base;
+aplicações, Docker, GPU e mídia ainda não foram implantados. O firewall legado
+dos convidados está ativo, mas o firewall do host mantém `enable: 0`; a
+restrição da gestão na LAN continua pendente. A inicialização
 isolada da mídia já foi examinada, com os limites do [registro de implementação](docs/implementation-status.md).
 Disco único, USB e hub único continuam pontos de falha; adquirir
 o nobreak e ensaiar recuperação são pendências do desenho.

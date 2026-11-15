@@ -1,0 +1,17 @@
+{
+  "node": "pve-example",
+  "system_serial": "REPLACE-WITH-AUTHORIZED-SYSTEM-SSD-SERIAL",
+  "storage": "local-lvm",
+  "bridge": "vmbr1",
+  "uplink": "vmbr0",
+  "subnet": "172.28.64.0/24",
+  "gateway": "172.28.64.1",
+  "dns": ["1.1.1.1", "1.0.0.1"],
+  "ntp": ["162.159.200.1"],
+  "blocked_egress": ["203.0.113.18/32"],
+  "vms": [
+    {"role": "core", "id": 120, "ip": "172.28.64.10", "mac": "02:00:00:00:01:20", "cores": 4, "memory_mib": 6144, "disk_gib": 160},
+    {"role": "playback", "id": 121, "ip": "172.28.64.20", "mac": "02:00:00:00:01:21", "cores": 4, "memory_mib": 4096, "disk_gib": 80},
+    {"role": "edge", "id": 122, "ip": "172.28.64.30", "mac": "02:00:00:00:01:22", "cores": 1, "memory_mib": 1024, "disk_gib": 16}
+  ]
+}

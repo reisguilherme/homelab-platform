@@ -19,9 +19,11 @@ A transferência Windows foi interrompida e permanece incompleta; o ensaio
 integral final não foi feito. Segunda cópia e novo ensaio integral deixaram
 de ser pré-requisitos desta instalação. O desligamento limpo e a sobrescrita
 somente do SSD de sistema da ficha privada foram autorizados; preservar o
-segundo SSD e os USBs. O host tem zero VMs, segundo SSD desmontado e HDs USB
-desconectados; o firewall está sem regras configuradas. As próximas etapas são
-VMs, restauração, NFS, isolamento e retomada dos serviços. O
+segundo SSD e os USBs. As três VMs base estão em execução, com rede privada
+filtrada e autostart conferido após reboot; segundo SSD desmontado e HDs USB
+desconectados. O [estado atual](../implementation-status.md#vms-e-rede-privada)
+registra os testes TCP e de pacotes. Restauração, NFS, aplicações, restrição da
+gestão na LAN e publicação continuam pendentes. O
 [roteiro de passagem](../runbooks/proxmox-installation-handoff.md) preserva o
 histórico sem exigir repetir o ensaio do arquivo intacto ou iniciar workers históricos.
 
@@ -127,7 +129,7 @@ As mudanças futuras devem preservar os testes de download protegido, importaç�
 |---|---|---|
 | D01 | Público com login; gestão privada | Confirmado pelo proprietário |
 | D02 | Mídia RO no Jellyfin; alterações privadas | Confirmado para o to-be; muda a experiência de edição/legendas no corte futuro |
-| D03 | Proxmox + três VMs e Compose agora | Host Proxmox instalado; três VMs continuam propostas e nenhuma foi criada. K3s permanece futuro |
+| D03 | Proxmox + três VMs e Compose agora | Host e três VMs Ubuntu operantes, com QGA/SSH e autostart após reboot conferidos; Compose e aplicações ainda ausentes. K3s permanece futuro |
 | D04 | Core agrupa storage + automação na primeira etapa | Recomendação transitória; aceita o risco de escrita dos serviços privados |
 | D05 | Seerr privado inicialmente | Recomendação de escopo; pedidos públicos exigem incluir seus fluxos e riscos na borda |
 | D06 | Entrada pública existente, encaminhamento ou VPS/túnel | Pendente de inspeção IP/CGNAT/IPv6 e equipamento de rede; nenhuma porta nova autorizada aqui |
@@ -141,7 +143,7 @@ As mudanças futuras devem preservar os testes de download protegido, importaç�
 | D14 | Nobreak | Aquisição pendente confirmada pelo proprietário; modelo, carga, autonomia, comunicação e religamento a verificar |
 | D15 | Alertas e identidade privada | Definir canal de notificações, MFA e papéis delegados; Grafana Alerting inicial proposto, sem canal operacional comprovado |
 
-O desenho pode ser fechado em camadas: confirmar D03–D05 para a topologia inicial; resolver D06–D09 antes do plano operacional; manter D10–D11 como critérios de evolução. Não é necessário decidir agora a tecnologia de storage distribuído de um cluster que ainda não existe.
+O desenho segue em camadas: D03 já tem host e VMs aplicados; fechar D04–D05 e os fluxos das aplicações, resolver D06–D09 conforme as etapas operacionais e manter D10–D11 como critérios de evolução. Não é necessário decidir agora a tecnologia de storage distribuído de um cluster que ainda não existe.
 
 ## 6. Limites e riscos aceitos apenas como proposta
 
@@ -154,4 +156,4 @@ O desenho pode ser fechado em camadas: confirmar D03–D05 para a topologia inic
 
 ## 7. Verificação desta entrega documental
 
-Revisão estática, links locais, consistência entre decisões e diagramas e checagem de whitespace são os checks apropriados a esta entrega. Não se afirma aprovação da suíte do aplicativo, scan de CVEs, funcionamento da VM, desempenho ou isolamento físico. Os resultados concretos da checagem documental acompanham a entrega; todos os testes operacionais acima permanecem futuros.
+Revisão estática, links locais, consistência entre decisões e diagramas e checagem de whitespace são os checks apropriados a esta entrega documental. As provas operacionais posteriores de VMs, rede e reboot estão no [estado da implementação](../implementation-status.md#vms-e-rede-privada), com seu alcance. Elas não comprovam desempenho, isolamento físico, prontidão das aplicações ou os demais aceites deste backlog.

@@ -9,18 +9,21 @@ A captura final do host, projetos e sete volumes foi selada, então com os 22
 containers antes ativos parados e SSH disponível. Após o desligamento, o
 proprietário instalou Proxmox no SSD autorizado; identidade e acesso privado
 por SSH/HTTPS foram conferidos. A entrega do host está concluída conforme o
-[estado atual](../implementation-status.md#host-proxmox-entregue). A
+[registro da entrega](../implementation-status.md#host-proxmox-entregue). A
 captura tem checksums conferidos no HD de 18 TB. O proprietário escolheu
 prosseguir mantendo o backup final somente nesse HD; a transferência Windows
 foi interrompida, incompleta, e novo ensaio integral não será exigido antes de
 instalar. O segundo SSD mantém seu UUID ext4 e está desmontado; os HDs USB
-estão desconectados. VMs, restauração, NFS e isolamento continuam pendentes;
-o firewall não tem regras configuradas.
+estão desconectados. As três VMs base já executam Ubuntu, com rede privada
+filtrada e autostart conferido após reboot. Restauração, NFS, aplicações e
+restrição da gestão na LAN continuam pendentes, conforme o
+[estado atual](../implementation-status.md#vms-e-rede-privada).
 A posse dos repositórios não implanta a nova topologia.
 
-A proposta inicial continua sendo **um nó Proxmox e três VMs: entrada, reprodução
-e núcleo privado**, com Compose nos convidados. O núcleo mantém storage e automação
-de mídia próximos para preservar as garantias atuais; Jellyfin recebe mídia RO.
+A base aplicada é **um nó Proxmox e três VMs: entrada, reprodução e núcleo
+privado**. Compose, storage e aplicações ainda serão implantados nos convidados.
+O destino funcional mantém storage e automação de mídia próximos para preservar
+as garantias atuais; Jellyfin receberá mídia RO.
 NAS dedicado e K3s são evoluções condicionadas a recursos, contratos e ensaios.
 
 | Documento | Conteúdo |
@@ -43,13 +46,13 @@ dependência de um render local para ler esta arquitetura.
 
 | Item | Estado |
 |---|---|
-| Compute observado | i7-10750H, 6 núcleos/12 threads, 15,49 GiB utilizáveis; Proxmox no SSD de sistema, segundo SSD ext4 desmontado; 348,82 GiB livres em `local-lvm`, sem VMs; saúde e carga ainda exigem validação |
+| Compute observado | i7-10750H, 6 núcleos/12 threads, 15,49 GiB utilizáveis; três VMs com 11 GiB de RAM e 256 GiB de discos virtuais; reserva planejada de 92,82 GiB no pool inicial; segundo SSD ext4 desmontado; capacidade sob carga ainda exige validação |
 | Mídia informada | HD USB de 18 TB; a observação anterior ainda encontrou quatro volumes na união |
 | Demanda | Até dez reproduções, upload anunciado de 300 Mbit/s; desempenho não medido |
 | Internet | IP público relatado; CGNAT, IPv6 e acesso externo não comprovados |
 | Público | Jellyfin com login individual; administração privada |
 | Escrita Jellyfin | As-is permite edições/legendas; **to-be confirmado** é mídia RO e alterações privadas |
-| Administração | Proxmox com SSH/HTTPS privados verificados; CRUD/ACL de VMs, Grafana e operações da aplicação ainda pendentes |
+| Administração | Proxmox e três VMs criadas, SSH/HTTPS privados verificados; gestão LAN restrita, ACLs delegadas, Grafana e operações da aplicação ainda pendentes |
 | Energia | Notebook na bateria e fonte do USB sem AC relatados; ensaio físico pendente |
 | Recuperação | Reintegração automática exigida após validações; identidade, integridade ou readiness incertas bloqueiam retomada |
 | Nobreak | Aquisição pendente; modelo, carga, autonomia e comunicação ainda não definidos |

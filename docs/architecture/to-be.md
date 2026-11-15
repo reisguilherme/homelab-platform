@@ -1,6 +1,6 @@
 # To-be do homelab
 
-Proposta de 14/11/2026, atualizada em 15/11. O proprietário confirmou reprodução pública autenticada, administração privada, **Jellyfin sem escrita na mídia**, controle completo de VMs e reintegração automática do USB após falha. Nobreak é pendência de aquisição confirmada. O host Proxmox foi instalado pelo proprietário, com identidade e acesso privado SSH/HTTPS verificados. A divisão de VMs, NFS, isolamento e retomada dos serviços abaixo continuam propostas: nenhuma VM foi criada e o firewall não tem regras configuradas. Consulte o [estado da implementação](../implementation-status.md#host-proxmox-entregue).
+Proposta de 14/11/2026, atualizada durante a implementação. O proprietário confirmou reprodução pública autenticada, administração privada, **Jellyfin sem escrita na mídia**, controle completo de VMs e reintegração automática do USB após falha. Nobreak é pendência de aquisição confirmada. Proxmox e as três VMs Ubuntu estão operantes, com QGA/SSH/NTP e rede privada filtrada. Os testes TCP e de pacotes passaram; autostart ordenado, acesso e filtros foram conferidos após reboot. Restrição da gestão na LAN, NFS, aplicações e retomada dos serviços continuam pendentes. Consulte o [estado da implementação](../implementation-status.md#vms-e-rede-privada).
 
 ## Fronteira entre plataforma e consumidor
 
@@ -10,8 +10,9 @@ bancos lógicos, métricas, dashboards específicos e runbooks. A co-localizaç�
 inicial no core não funde essas responsabilidades; o orçamento continua único.
 O [contrato obrigatório por consumidor](../repositories.md) precede acesso e novo
 consumo de capacidade. Validação local não aplica ACLs nem autoriza implantação.
-K3s continua evolução futura. A instalação manual do Proxmox não aplica os
-contratos nem cria VMs por este repositório.
+K3s continua evolução futura. O gerador de bootstrap produz um bundle offline;
+a aplicação revisada criou as VMs, sem implantar automaticamente os contratos
+ou as aplicações dos consumidores.
 
 ## 1. Alternativas consideradas
 
@@ -24,6 +25,13 @@ contratos nem cria VMs por este repositório.
 Proxmox agenda e administra VMs. Kubernetes agenda pods dentro de VMs Linux que funcionam como nós do cluster. Uma VM usa CPU e RAM de **um host por vez**; ter três hosts oferece mais capacidade agregada para várias VMs, não uma única VM somando a RAM dos três. Não instalar o plano de aplicações diretamente no host Proxmox.
 
 ## 2. Fase inicial com um compute
+
+O diagrama abaixo permanece o destino funcional. Na base já aplicada existem
+as três VMs e uma bridge privada com NAT, sem DNAT. Core → playback:8096 e
+playback → core:2049 passaram com listeners temporários; edge permanece sem
+acesso à playback. Ainda não há Jellyfin, proxy, NFS, mídia, GPU ou Docker nos
+convidados. O firewall do host mantém a gestão LAN existente, sem restrição
+nova; não interpretar o diagrama como aceite de publicação.
 
 ```mermaid
 flowchart TB
@@ -93,18 +101,26 @@ Exclusões de mídia são solicitadas apenas pelo caminho administrativo privado
 | Destino | RAM fixa inicial | vCPU iniciais | Estado persistente |
 |---|---:|---:|---|
 | Proxmox e serviços de host | 3 GiB de orçamento | Reserva de capacidade do host | SSD, independente da VM storage |
-| Edge | 1 GiB | 1 | Pequeno disco SSD; certificados/configuração |
-| Playback | 4 GiB | 4 | SSD para config/DB e transcode limitado |
-| Core | 6 GiB | 4 | SSD para appdata/SQLite; USB para mídia |
-| Margem não alocada | Aproximadamente 2 GiB | — | Absorver picos e medir antes de ampliar |
+| Edge | 1 GiB | 1 | Disco virtual de 16 GiB; aplicação ainda ausente |
+| Playback | 4 GiB | 4 | Disco virtual de 80 GiB; aplicação/transcode ainda ausentes |
+| Core | 6 GiB | 4 | Disco virtual de 160 GiB; aplicação e USB ainda ausentes |
+| Margem após orçamento do host | 1,49 GiB | — | Absorver picos e medir antes de ampliar |
 
-É um ponto de partida nominal com os 16 GB declarados, ainda sem alocações. O inventário do host instalado mediu **15,49 GiB utilizáveis**, 6 núcleos/12 threads, `local-lvm` vazio com **348,82 GiB livres** e cerca de **85 GiB livres na raiz**. Conferir margem real e consumo antes de aplicar o orçamento, sem sobrealocação agressiva; vCPU são escalonadas sobre o processador, não núcleos adicionais. Os dois SSDs de 512 GB estão identificados: Proxmox ocupa o SSD autorizado, e o segundo conserva o UUID ext4 de mídia, desmontado. Saúde e capacidade sob carga continuam pendentes. Não presumir RAID, pool conjunto ou 1 TB disponível; distribuir discos de VM e limitar transcode dentro da capacidade real. Mirror de dois SSDs de 512 GB teria aproximadamente a capacidade de um deles; soma de capacidade sem réplica aumenta o impacto da falha de qualquer disco.
+As três VMs já receberam essas alocações, ainda sem carga de aplicações. O host tem **15,49 GiB utilizáveis** e 6 núcleos/12 threads; os convidados somam 11 GiB e 9 vCPU escalonadas, não núcleos adicionais. O pool inicial de **348,82 GiB** comporta os **256 GiB** virtuais planejados e deixa **92,82 GiB (26,61%)** de reserva pelo tamanho completo dos discos; uso físico thin e margem sob carga precisam ser acompanhados. Os cerca de 85 GiB livres na raiz pertencem ao inventário anterior ao bootstrap. Os dois SSDs de 512 GB estão identificados: Proxmox ocupa o SSD autorizado, e o segundo conserva o UUID ext4 de mídia, desmontado. Saúde e capacidade sob carga continuam pendentes. Não presumir RAID, pool conjunto ou 1 TB disponível; limitar transcode dentro da capacidade real. Mirror de dois SSDs de 512 GB teria aproximadamente a capacidade de um deles; soma de capacidade sem réplica aumenta o impacto da falha de qualquer disco.
 
 Se a carga real não couber, reduzir concorrência/tarefas auxiliares ou ampliar RAM; não tirar a separação entre playback público e core para acomodar Kubernetes. Para três ou mais VMs de infraestrutura adicionais, 32 GB ou mais pode tornar o projeto mais confortável, mas a escolha final depende da medição e do suporte físico do equipamento.
 
 Grafana/Prometheus são propostos dentro dos 6 GiB do core, com teto conjunto experimental de 1 GiB, reduzindo a fatia da automação. Não há RAM adicional implícita nem quarta VM já orçada. Medir antes de habilitar Loki, Immich ou mais coletores. Métricas/configuração ficam em SSD independente do USB; a administração nativa do Proxmox continua no host. [Orçamento e cobertura de operação](operations.md).
 
 ## 3. Rede e publicação
+
+A base atual mantém `vmbr0` intacta e usa a bridge privada para os convidados.
+O backend legado aplica regras por VM e guards de origem IP/MAC, ARP, VLAN e
+IPv6. Testes de pacotes e 21 fluxos TCP passaram dentro do alcance do
+[runbook](../runbooks/proxmox-guests.md); o reboot preservou os filtros e a
+matriz TCP passou novamente. A WAN
+atual está bloqueada no egress para evitar hairpin e deve ser revalidada se
+mudar. A tabela seguinte é o destino das aplicações, ainda sem publicação.
 
 | Origem | Destino permitido | Regra proposta |
 |---|---|---|

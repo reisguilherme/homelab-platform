@@ -4,10 +4,14 @@ Atualização documental: **15/11/2026**. A publicação inicial de 14/11 estabe
 a separação de repositórios na branch `refactor`. **O proprietário instalou
 Proxmox no SSD de sistema autorizado, e a entrega do host identificado e
 acessível pela rede privada está concluída.** Identidade SSH, sessão com chave
-dedicada e HTTPS foram conferidos. O segundo SSD está desmontado com o mesmo
-UUID ext4 anterior; os HDs USB permanecem desconectados. Não há VMs ou regras
-de firewall configuradas. Restauração, NFS, isolamento e serviços continuam
-pendentes; a prontidão de produção permanece falsa. O
+dedicada e HTTPS foram conferidos. Depois, core, playback e edge foram criadas
+com Ubuntu 24.04, QGA, SSH e NTP operantes. A rede privada com NAT sem DNAT e
+filtros dos convidados passou pelos testes TCP e de pacotes registrados abaixo.
+O segundo SSD está desmontado com o mesmo UUID ext4 anterior; os HDs USB
+permanecem desconectados. Autostart ordenado, acesso e filtros foram conferidos
+após reboot. Restrição da gestão LAN, restauração, NFS e aplicações continuam
+pendentes; a prontidão de produção
+permanece falsa. O
 [roteiro de instalação assistida](runbooks/proxmox-installation-handoff.md)
 preserva a preparação e a passagem realizadas.
 
@@ -16,8 +20,10 @@ preserva a preparação e a passagem realizadas.
 | Arquitetura | Documentação geral canônica, diagramas e gaps | Aceite físico das hipóteses de isolamento e capacidade |
 | Integração | Schemas, template, validador local e catálogo por commit | Conformidade dos manifests e permissões efetivas por projeto |
 | Observabilidade | Compose independente com Prometheus/Grafana privados | Ativação, alvos, dashboards, consumo e ensaios no servidor |
-| Host Proxmox | Instalação no SSD autorizado, inventário e acesso privado SSH/HTTPS verificados | Configurar e testar isolamento; administrar o host sem depender dos serviços convidados |
-| VMs e aplicações | Desenho e ensaio histórico de mídia examinados; backup final do host, projetos e sete volumes selado e conferido no HD | Criar VMs, restaurar estado e validar a retomada; nenhuma VM existe ainda |
+| Host Proxmox | Instalação no SSD autorizado, inventário e acesso privado SSH/HTTPS verificados; `vmbr0` preservada | Restringir gestão na LAN; o firewall do host mantém `enable: 0` |
+| VMs base | Core, playback e edge `running`, QGA/SSH/NTP operantes, cloud-init concluído; autostart ordenado conferido após reboot | Capacidade sob carga e prontidão das aplicações |
+| Rede dos convidados | Bridge privada, NAT sem DNAT, firewall legado ativo; provas TCP/pacotes e persistência dos filtros após reboot conferidas | Revisão da WAN dinâmica, restrição da gestão LAN e aceite dos fluxos de aplicações |
+| Aplicações | Ensaio histórico de mídia examinado; backup final selado e conferido no HD | Restaurar estado e validar retomada; sem Docker, apps, GPU, USB ou NFS de mídia nos guests |
 | Hub de arquivos | Modelo NFS e autoridade sobre mounts/exports | Consolidação verificada, exports/ACL e clientes reais |
 | Energia | Estados e regras de reintegração USB | Nobreak, comunicação, coordenação host/guest e teste de falhas |
 | K3s | Critérios de adoção e fronteiras | Recursos adicionais, implantação e contratos dos workloads |
@@ -115,6 +121,10 @@ a próxima etapa de storage.
 
 ## Host Proxmox entregue
 
+Registro histórico anterior à criação das VMs. A configuração atual está na
+[etapa seguinte](#vms-e-rede-privada); zero VMs e firewall sem regras abaixo
+descrevem somente este instante inicial.
+
 O fingerprint SSH foi comparado ao console físico, a chave pública dedicada
 foi cadastrada e uma segunda sessão `root` com essa chave foi confirmada. O
 inventário por SSH de **15/11, 21:56:49 UTC (18:56:49 de São Paulo)** registrou:
@@ -137,14 +147,84 @@ certificado apresentado correspondente ao conferido. O teste não enviou
 credenciais ao painel nem alterou a confiança global do Windows. Isso prova
 identidade e transporte do painel, não CRUD/ACL de VMs ou isolamento de rede.
 
-**Entrega concluída: host identificado e acessível pela rede privada.** A
+**Entrega concluída: host identificado e acessível pela rede privada.** Aquela
 checagem não montou discos de mídia, criou VMs, fez deploy ou restaurou serviços.
-As próximas etapas são preparar os convidados e a posse exclusiva do storage,
-restaurar estado e validar NFS, firewall e isolamento antes da publicação.
+A etapa posterior criou os convidados descritos a seguir; storage, restauração
+e publicação das aplicações ainda dependem dos próprios aceites.
 K3s permanece futuro. IPs, seriais, UUIDs, fingerprints e chaves ficam somente
 na ficha e nas evidências privadas.
 
-## Verificação da separação
+## VMs e rede privada
+
+O bootstrap autorizado criou três VMs Ubuntu 24.04 amd64 no PVE 9.2.2:
+
+| Papel | vCPU | RAM fixa | Disco virtual |
+|---|---:|---:|---:|
+| Core | 4 | 6 GiB | 160 GiB |
+| Playback | 4 | 4 GiB | 80 GiB |
+| Edge | 1 | 1 GiB | 16 GiB |
+
+São 11 GiB de RAM, mais 3 GiB de orçamento do host e margem de 1,49 GiB.
+Os discos somam 256 GiB de um pool inicial de 348,82 GiB, deixando 92,82 GiB
+planejados (26,61%) pelo tamanho completo dos discos. Isso não é medição de
+espaço físico consumido pelo thin pool nem aceite de carga.
+
+A imagem `ubuntu-24.04-server-cloudimg-amd64.img`, release 20261017, teve
+assinatura oficial e SHA-256 conferidos. O
+[runbook de guests](runbooks/proxmox-guests.md) registra hash, fontes, geração
+offline, preflight e aplicação. O gerador não executa deploy; perfil e
+inventário reais ficam privados. Nenhum disco físico foi tocado pelo bootstrap.
+
+Todas as VMs estão `running`, com QGA respondendo, SSH por ProxyJump e NTP
+sincronizado. As chaves de host foram obtidas pelo QGA antes de confiar no SSH.
+Cloud-init terminou com `errors: []` e somente o aviso de depreciação do campo
+`user` como string gerado pelo PVE, a revisar antes da versão 27.2.
+Após os testes iniciais, `onboot` foi habilitado na ordem **core → playback →
+edge**, com ordem inversa de desligamento. Isso ordena as VMs base; não espera
+readiness de NFS ou aplicações. Não há apps, Docker, GPU, USB ou NFS de mídia
+nos convidados.
+
+`vmbr0` permaneceu intacta. A bridge privada fornece NAT de saída sem DNAT.
+O backend legado `pve-firewall` está `enabled/running`, com regras por VM;
+o host mantém `enable: 0`, deixando a gestão na LAN como gap explícito.
+As 21 provas TCP passaram: core → playback:8096 e playback → core:2049 foram
+permitidas, e 19 conexões proibidas foram negadas. Os dois casos positivos
+usaram **listeners temporários**, sem aplicação: não comprovam Jellyfin,
+NFS, export ou mídia somente leitura. A matriz inclui negações entre guests,
+para gestão do host/gateway e para o destino Tailscale. DNS e HTTPS Ubuntu
+retornaram sucesso nos três guests.
+
+Guards `raw/physdev` verificam origem IP/MAC antes de conntrack e descartam
+IPv6. `ebtables` em `INPUT`/`FORWARD` verifica MAC, IP/MAC de remetente ARP e
+VLAN. Probes de dois quadros por caso confirmaram incremento dos contadores
+DROP para IP/MAC forjados, remetente ARP forjado, VLAN 0/100, 802.1ad 100 e
+IPv6, sem zerar contadores. O caso 802.1ad apareceu em `802_1Q` pela representação
+do backend legado/kernel. Os hooks são idempotentes e foram preservados pelo
+reinício do firewall.
+
+O reboot posterior mudou o boot ID do host e trouxe automaticamente as três
+VMs, com QGA respondendo. SSH por ProxyJump manteve as mesmas chaves; HTTPS
+do PVE respondeu `200` com CA e identidade IP/SAN validadas. Não houve units
+falhadas. As configurações de `vmbr0` e da bridge privada mantiveram seus hashes;
+NAT e guards `raw`/`ebtables` persistiram sem duplicatas. O segundo SSD manteve
+seu UUID e permaneceu desmontado; os USBs continuam desconectados. Os **21
+testes TCP** e DNS/HTTPS Ubuntu nos três convidados passaram novamente após
+o reboot. Os probes de quadros descritos acima são da rodada anterior; a
+verificação posterior conferiu a persistência das regras e repetiu a matriz TCP.
+
+Os endereços WAN atuais estão bloqueados no egress para evitar hairpin;
+revalidá-los quando mudarem e antes da publicação. A publicação continua
+fechada até aplicações, autenticação, mounts, ausência de mídia e NFS RO serem
+aceitos. Gestão LAN restrita, carga, GPU, recuperação USB e
+nobreak mantêm suas pendências. Não há aceite de isolamento absoluto ou HA;
+`production_ready` e `partial_restart_safe` continuam falsos. A escolha de
+backup final somente no HD de 18 TB e o alcance das provas anteriores permanecem.
+
+A validação local deste bootstrap em Python 3.12/Linux passou com **94 testes**,
+Ruff, formatação, AST e validação de contrato/catálogo. Esses checks locais
+complementam as provas do host descritas acima; não iniciaram as aplicações.
+
+## Verificação histórica da separação
 
 - Python 3.12/WSL2, ambiente independente e `uv.lock`: `make lint` e
   `make validate` passaram. Template, catálogo e contrato `media-metrics` foram

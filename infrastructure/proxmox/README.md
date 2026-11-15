@@ -2,7 +2,11 @@
 
 Este diretório delimita a implementação da infraestrutura. O proprietário
 instalou Proxmox no SSD autorizado; identidade e acesso privado SSH/HTTPS foram
-verificados. Não há instalador automatizado neste repositório. O [to-be](../../docs/architecture/to-be.md)
+verificados. Core, playback e edge já executam Ubuntu 24.04, com rede privada
+e acesso por SSH ProxyJump. Não há instalador automatizado do hypervisor; o
+[gerador](../../scripts/proxmox_bootstrap.py) produz somente um bundle offline
+para revisão, usando um [perfil privado derivado do exemplo](profile.example.json).
+O [to-be](../../docs/architecture/to-be.md)
 define as VMs de entrada, playback e núcleo privado, com administração fora da
 rede pública.
 
@@ -14,12 +18,18 @@ receber métricas ou um volume não concede administração do Proxmox.
 ## Host entregue e próximos passos
 
 O [roteiro de instalação assistida](../../docs/runbooks/proxmox-installation-handoff.md)
-registra a passagem física e a reconexão concluídas. O host possui zero VMs,
-segundo SSD ext4 desmontado e HDs USB desconectados. O firewall está sem regras
-configuradas; a entrega do host não comprova isolamento. O
-[estado atual](../../docs/implementation-status.md#host-proxmox-entregue)
-registra o inventário, versões, capacidade e validação de identidade. Os valores
-privados permanecem fora deste repositório.
+registra a passagem física e a reconexão concluídas. As três VMs usam 11 GiB
+de RAM e discos virtuais de 160/80/16 GiB; o segundo SSD ext4 continua
+desmontado e os HDs USB desconectados. Nenhum disco físico foi alterado pelo
+bootstrap. A bridge privada tem NAT sem DNAT; o firewall legado está ativo
+para os guests e `enable: 0` no host preserva a gestão LAN como gap.
+O [runbook dos convidados](../../docs/runbooks/proxmox-guests.md) explica
+geração, preflight, aplicação e testes. O
+[estado atual](../../docs/implementation-status.md#vms-e-rede-privada)
+registra as provas TCP/pacotes e de reboot, com seus limites. Autostart ordenado,
+acesso e filtros persistiram após reboot; não há apps, Docker, GPU, USB ou
+NFS de mídia nos convidados.
+Os valores privados permanecem fora deste repositório.
 
 - Os dois SSDs já estão identificados no inventário privado. Confrontar
   modelo/serial antes de futuras operações de disco. Preservar o segundo
@@ -39,8 +49,10 @@ privados permanecem fora deste repositório.
   reativar workers históricos inativos apenas para completar a instalação.
 - Medir RAM disponível e consumo sob carga. O orçamento nominal do desenho deve
   ser ajustado à memória utilizável, ao cache e ao pico de transcode.
-- Provar bridges/firewall, acesso privado ao console e rollback antes de expor
-  o playback. Manter acesso administrativo quando o core estiver indisponível.
+- Preservar as provas TCP/pacotes e de reboot concluídas; testar gestão
+  restrita e os fluxos reais das aplicações antes de expor playback. Portas
+  testadas com listeners temporários não comprovam NFS RO nem autenticação.
+  Manter acesso administrativo quando o core estiver indisponível.
 - Ensaiar USB passthrough, perda/retorno do disco, NFS e coordenação com as
   pausas da aplicação. Não executar dois recuperadores concorrentes.
 

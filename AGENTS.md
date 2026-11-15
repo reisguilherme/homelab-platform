@@ -12,9 +12,12 @@ próprios; o catálogo aponta para commits imutáveis e distingue proposta de ex
   em 15/11/2026 e, depois, o desligamento limpo e a sobrescrita somente do SSD
   de sistema identificado na ficha privada para instalar Proxmox. Preservar o
   segundo SSD e todos os discos USB. O proprietário instalou Proxmox no SSD
-  autorizado; identidade do host e acesso SSH/HTTPS foram conferidos. Não há
-  VMs, storage de mídia montado ou isolamento aplicado nesta etapa. Confira o
-  [estado de implementação](docs/implementation-status.md#host-proxmox-entregue).
+  autorizado; identidade do host e acesso SSH/HTTPS foram conferidos. Core,
+  playback e edge já executam Ubuntu com QGA/SSH/NTP, sem apps, Docker, GPU,
+  USB ou NFS de mídia. A rede privada tem NAT sem DNAT e filtros testados;
+  autostart ordenado, acesso e filtros persistiram após reboot. A restrição
+  da gestão na LAN continua pendente.
+  Confira o [estado de implementação](docs/implementation-status.md#vms-e-rede-privada).
   A inicialização da mídia
   em clones foi examinada; isso não comprova integração completa ou produção.
   A captura final foi selada, então com 22 containers parados e SSH disponível;
@@ -22,8 +25,9 @@ próprios; o catálogo aponta para commits imutáveis e distingue proposta de ex
   manter ali a única cópia final completa e prosseguir; a transferência Windows
   foi interrompida e seus parciais não servem para restauração. Não reexigir
   segunda cópia ou novo ensaio integral como condição para instalar. O
-  checkpoint anterior permanece intacto. Restauração, mounts, VMs e isolamento
-  continuam pendentes; a entrega do host não comprova essas etapas.
+  checkpoint anterior permanece intacto. Restauração, mounts, aplicações e
+  publicação continuam pendentes; testes com listeners não comprovam NFS RO
+  ou Jellyfin funcionando.
 - Dispositivos e escopo exatos precisam de autorização antes de alteração
   destrutiva. Preservar o acervo, origens e pausas manuais; não limpar mídia.
 - Não substituir fstab inteiro, ativar RTX, reescrever serviço Lenovo, abrir
@@ -33,6 +37,12 @@ próprios; o catálogo aponta para commits imutáveis e distingue proposta de ex
   privadas. Segredos ficam no .env privado de cada implantação, sem *_FILE.
 - Usar fixtures temporárias e Python 3.12/Linux para os checks. Teste local não
   prova hardware, storage, isolamento de VMs ou recuperação em produção.
+- `scripts/proxmox_bootstrap.py` somente gera bundle ou valida um snapshot
+  separado; não faz deploy nem coleta inventário. Seguir o
+  [runbook de guests](docs/runbooks/proxmox-guests.md), preservar `vmbr0` e
+  não reaplicar o bootstrap sobre IDs/bridge existentes. Valores reais ficam
+  privados. Publicação permanece fechada até os aceites de apps, autenticação,
+  mounts e mídia RO; não interpretar a liberação de uma porta como esses aceites.
 
 ## Fronteiras
 
