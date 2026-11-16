@@ -118,14 +118,21 @@ pendentes, sem bloquear a recuperação do acervo.
   privado novo no SSD, com 33.415.595 bytes e hashes selecionados conferidos.
   Os 6.029 recibos íntegros descrevem 8.215 caminhos e 5.449.345.903.837 bytes
   únicos já no staging do HD de 18 TB. Metadados, aliases e quantidade de links
-  coincidiram; o conteúdo atual ainda precisa de leitura e comparação SHA-256.
+  coincidiram; a leitura atual com comparação SHA-256 está em andamento, após
+  piloto real de 32 grupos/2.078 bytes. O executor transitório no guest tem
+  limite de 64 MiB/s, 384 MiB de RAM, 75% de um núcleo e I/O ocioso, sem restart;
+  progresso fica no SSD e divergências interrompem a execução. O tempo mínimo
+  de leitura nesse teto é cerca de 23 horas, além das verificações e pausas.
   O inventário inicial mais um arquivo posterior autenticado totalizam 8.217
   caminhos esperados. Faltam os dois aliases de um único arquivo de 4,82 GB,
   cuja recuperação histórica é explicitamente degradada. Seu candidato foi
-  preservado no estado qBit restaurado no SSD, separado do parcial que permanece
+  preservado no estado qBit restaurado no SSD, com hash atual conferido contra
+  a prova degradada, separado do parcial que permanece
   no HD; nenhum deles foi publicado como mídia íntegra. A árvore nativa já no
   HD tem outros 9.709 caminhos e 5.890.064.899.152 bytes únicos, fora dessa etapa
-  de transferência. Nada foi apagado, sobrescrito ou publicado nesta conferência.
+  de transferência. O delta de novos arquivos/alterações posteriores ao inventário
+  histórico ainda precisa ser reconciliado; journals das origens continuam
+  pendentes. Nada foi apagado, sobrescrito ou publicado nesta conferência.
 
 A extensão de lease para escritores do core está preparada e revisada, mas
 não implantada. O contrato v2 preserva o consumidor de playback e exige migração

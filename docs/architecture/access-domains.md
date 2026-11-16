@@ -47,6 +47,14 @@ devem continuar acessíveis aos administradores sem depender do proxy público.
 A localização dos proxies privados e suas permissões serão detalhadas conforme
 as [fronteiras da plataforma](operations.md) e dos consumidores.
 
+A administração do próprio Jellyfin também permanece privada. A rota
+`streaming` deve cumprir o contrato público do consumidor e negar operações
+administrativas, inclusive para uma sessão com privilégios elevados. Não basta
+ocultar links da interface ou dar outro nome DNS ao mesmo backend. O aceite
+deve conferir a reprodução pública e essas negações separadamente; exclusões
+continuam sujeitas à autoridade independente do core descrita no
+[to-be](to-be.md).
+
 DNS informa o destino, TLS autentica o servidor e protege o transporte, e a
 autenticação da aplicação identifica quem pode usá-la. Um domínio próprio e um
 certificado válido não autorizam usuários nem fecham portas. As sessões, TOTP,
@@ -114,7 +122,7 @@ módulos e a entrega/renovação serão escolhidos na implementação. Ver
 | DNS e TLS | Acesso autorizado à zona, estratégia de DNS-01, emissão, renovação e retorno testados; nenhum segredo em código ou documentação. |
 | Acesso privado | Resolução na LAN e Tailscale, rota mínima ao resolvedor e aos serviços, políticas ACL/grants efetivas e negação a clientes sem permissão. |
 | Isolamento | Nenhuma rota pública aos seis nomes administrativos, aos opcionais privados ou às portas nativas; verificar também IPv6. |
-| Aplicações | Origem, sessões e redirecionamentos corretos; clientes Jellyfin reproduzindo por acesso externo; preservação de NFS RO, lease e contenção de storage. |
+| Aplicações | Origem, sessões e redirecionamentos corretos; clientes Jellyfin reproduzindo por acesso externo; administração Jellyfin negada pela entrada pública; preservação de NFS RO, lease e contenção de storage. |
 
 O [estado de implementação](../implementation-status.md) continua sendo a
 referência para o que foi executado. Este desenho não comprova publicação,
