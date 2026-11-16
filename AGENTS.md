@@ -14,8 +14,9 @@ foram comprovados; DNAT TCP 80/443 foi aplicado e 33 checks do proxy passaram.
 A publicação está em ativação, sem certificado TLS: 80/443 externas dão timeout;
 10443 temporária chega ao PVE e serve só ao diagnóstico. A operadora recusou
 liberação das portas/IP fixo para PF, conforme relato posterior do proprietário.
-Avaliar entrada por túnel e gestão via Tailscale; VPS pública é proposta pendente
-de escolha/custo. Não publicar vídeo pelo Tunnel público padrão da Cloudflare:
+VPS foi recusada. Avaliar `:10443` com DNS-01/DDNS ou Jellyfin privado, sem
+presumir escolha; gestão continua proposta via Tailscale. Não publicar vídeo
+pelo Tunnel público padrão da Cloudflare sem nova decisão informada:
 ver análise em `docs/architecture/access-domains.md`. Nenhuma alternativa foi
 implantada; 10443 continua fora de produção. Consulte o
 [estado atual](docs/implementation-status.md); os relatos anteriores abaixo são

@@ -14,19 +14,24 @@ serviço pago específico para vídeo e arquivos grandes. A
 distingue esse caso das rotas privadas. Desativar cache não transforma uma
 rota pública em privada.
 
-**Alternativa proposta, ainda sem contratação ou implantação:** VPS com HTTPS
-para `streaming.greis.dev.br`, encaminhando por túnel WireGuard para a entrada
-pública restrita da edge. A edge inicia o túnel de saída; a VPS não recebe
-rota para administração, core, Proxmox ou storage. Preservar o guard público
-do Jellyfin. O DNS pode continuar no Registro.br; se for migrado para
-Cloudflare, esse nome deve usar somente DNS, sem proxy de vídeo.
+**VPS recusada pelo proprietário.** A alternativa pública agora proposta é
+`https://streaming.greis.dev.br:10443`, com certificado ACME DNS-01 e atualização
+automática do DNS quando o IPv4 residencial mudar. Essa porta recebeu conexões
+externas no diagnóstico anterior; isso não comprova HTTPS/reprodução atuais.
+A escolha da URL com porta está pendente, pois antes havia preferência por
+URL sem porta. Preservar o guard público da edge e a administração privada.
+
+O [DNS-01](https://letsencrypt.org/docs/challenge-types/#dns-01-challenge)
+valida o domínio por TXT, sem depender da abertura de 80/443. Cloudflare pode
+ser usada para DNS/automação, mantendo o registro de streaming como
+[DNS only](https://developers.cloudflare.com/dns/proxy-status/), sem passar os
+vídeos pelo proxy. Nenhuma migração de DNS foi aplicada ou escolhida.
 
 Os nomes administrativos seguem pela entrada privada, com Tailscale, regras
-de acesso mínimas e DNS interno. A aceitação de uma VPS com mensalidade está
-pendente. A alternativa sem VPS é tornar também o Jellyfin privado, com
-clientes autorizados na VPN, conferindo suporte dos aparelhos e limites do
-plano antes de adotar. Nenhuma opção elimina o limite do upload residencial;
-a VPS adiciona custo de tráfego e deve ser dimensionada pelo uso de streaming.
+de acesso mínimas e DNS interno. Outra opção é tornar também o Jellyfin
+privado, com clientes autorizados na VPN, conferindo suporte dos aparelhos e
+limites do plano antes de adotar. Recusar VPS não equivale a aceitar Jellyfin
+privado. Nenhuma opção elimina o limite do upload residencial.
 
 ### Diagnóstico anterior à resposta da operadora
 

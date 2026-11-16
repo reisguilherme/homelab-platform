@@ -3,8 +3,9 @@
 **Atualização posterior:** a operadora recusou portas/IP fixo para PF, segundo
 o proprietário. O próximo passo de acesso passa a ser avaliar túnel para
 Jellyfin público e Tailscale privado, conforme [domínios e acesso](access-domains.md).
-A proposta de VPS aguarda escolha/custo; a orientação anterior de aguardar
-liberação de 80/443 abaixo é histórica. Nenhuma alternativa foi implantada.
+VPS foi recusada. `:10443` com DNS-01/DDNS e Jellyfin privado são alternativas
+em discussão; a orientação anterior de aguardar liberação de 80/443 abaixo é
+histórica. Nenhuma alternativa foi implantada.
 
 **Avanço no mesmo dia:** 8.209 caminhos/6.023 arquivos únicos (5,449 TB) foram
 publicados no HD de 18 TB; os dois aliases degradados ficam excluídos e as
