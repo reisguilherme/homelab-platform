@@ -1,17 +1,25 @@
 # Homelab Platform
 
-**Atualização de 16/11/2026:** oito processos nativos do core estão vivos;
-API, gateway e worker iniciados em manutenção, sem readmitir automações. Os 734
-torrents continuam parados, um em `missingFiles`. A publicação integrou 8.209 caminhos de 6.023
-arquivos únicos (5,449 TB); dois aliases degradados permanecem excluídos, com
-origens preservadas e scans Jellyfin contidos. Backend edge → playback e
-isolamento PVE passaram nos checks reais. DNAT TCP 80/443 aplicado, HTTP 308
-para HTTPS conferido pela LAN e 33 checks do proxy aprovados. **Publicação em
-ativação, ainda sem certificado TLS.** 80/443 externas dão timeout; o teste
-temporário via 10443 chega ao PVE, ainda sem TLS. O proprietário escolheu resolver
-primeiro 80/443 para URL sem porta; 10443 continua apenas diagnóstica.
-O [estado canônico](docs/implementation-status.md) detalha o alcance; a narrativa
-abaixo conserva as etapas anteriores.
+**Atualização de 16/11/2026:** os serviços são acessados por HTTPS privado pelo
+Tailscale. Jellyfin também atende a TV na LAN em `http://192.168.1.20:8096`, sem
+prefixo no endereço; o proprietário confirmou login e reprodução. A entrada
+WAN foi retirada e a VM edge permanece desligada, sem autostart.
+
+O console **Órbita** reúne cards das aplicações, recursos das VMs, inventário
+físico e ações de serviços pelo QEMU Guest Agent. Grafana oferece quatro
+dashboards: visão geral, VMs, discos e serviços. Proxmox e portal preservam a
+autenticação anterior; os demais acessos administrativos foram padronizados
+conforme a solicitação privada. Seerr usa `https://overseer.greis.dev.br/`.
+Veja o [guia do console](docs/runbooks/operational-console.md) e o
+[inventário físico](docs/runbooks/physical-storage-inventory.md).
+
+A publicação do acervo integrou 8.209 caminhos de 6.023 arquivos únicos
+(5,449 TB); dois aliases degradados permanecem excluídos, com as origens
+preservadas. Os aplicativos core continuam disponíveis; a API de mídia está
+parada e gateway/worker permanecem em manutenção, sem retomar downloads
+automaticamente. O [estado canônico](docs/implementation-status.md) registra
+os aceites e limites atuais. A narrativa da implantação abaixo é histórica
+quando divergir deste resumo.
 
 Infraestrutura compartilhada do homelab: API e portal de governança, arquitetura,
 contratos de integração, catálogo de projetos e observabilidade. Este repositório concentra as decisões
@@ -87,7 +95,10 @@ flowchart TB
 | [Responsabilidade dos repositórios](docs/repositories.md) | Plataforma, consumidores, versões e autoridade operacional |
 | [Contrato de integração](docs/integration-contract.md) | Recursos, rede, storage, telemetria, segredos e recuperação |
 | [Observabilidade](docs/observability.md) | Grafana/Prometheus, alvos opt-in, diretórios e limites |
-| [Domínios greis.dev.br](docs/architecture/access-domains.md) | Backend edge/proxy aceitos e DNAT aplicado; certificado TLS ainda ausente |
+| [Console Órbita](docs/runbooks/operational-console.md) | Cards, serviços por VM, ações, permissões e recursos |
+| [Discos físicos](docs/runbooks/physical-storage-inventory.md) | Dispositivos do Proxmox e do core, capacidade e frescor |
+| [Domínios privados](docs/runbooks/private-domains.md) | HTTPS pelo Tailscale e configuração dos nomes |
+| [Jellyfin na LAN](docs/runbooks/jellyfin-lan.md) | Acesso da TV pelo IP local, sem Tailscale ou prefixo |
 | [Prioridades atuais](docs/architecture/operational-priorities-2026-11-16.md) | Core/acervo primeiro; discos, controles por serviço, UI e RAM registrados |
 | [Estado da implementação](docs/implementation-status.md) | O que existe no código e o que falta comprovar no servidor |
 | [Proxmox](infrastructure/proxmox/README.md) | Host, convidados e limites atuais de rede |

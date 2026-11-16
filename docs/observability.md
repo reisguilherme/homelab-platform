@@ -3,9 +3,10 @@
 [compose.observability.yaml](../compose.observability.yaml) pertence ao projeto
 `homelab-observability`. Ele contém somente Prometheus e Grafana e não constrói,
 importa ou inicia consumidores. É um Compose independente, não um override de
-aplicação. Em **16/11/2026**, está implantado na homelab-control: seis targets
-ativos, 22 painéis verificados no navegador e falha/resolução de coleta
-ensaiadas. Consultar o [estado de implementação](implementation-status.md).
+aplicação. Em **16/11/2026**, está implantado na homelab-control: cinco targets
+ativos e quatro dashboards provisionados, com 49 painéis e 53 consultas
+verificadas. A edge foi parada intencionalmente e removida dos targets esperados.
+Consultar o [estado de implementação](implementation-status.md).
 
 ## Destino revisto: homelab-control
 
@@ -18,7 +19,8 @@ coletores e aceites; a [arquitetura de operação](architecture/operations.md)
 separa ações administrativas de observação.
 
 A VM tem 2 vCPU, 2 GiB e disco virtual de 24 GiB. A RAM veio da redução medida
-do core de 6 para 4 GiB, preservando 11 GiB totais para convidados. Prometheus
+do core de 6 para 4 GiB, preservando 11 GiB configurados para convidados; com a
+edge parada, as três VMs ligadas somam 10 GiB. Prometheus
 mantém 512 MiB, Grafana 384 MiB e API/coletor têm teto inicial conjunto de
 384 MiB; a margem interna restante atende SO/cache e processos auxiliares.
 O [orçamento de storage](architecture/to-be.md#orçamento-inicial-de-recursos)
@@ -41,7 +43,8 @@ e testar cada entrada privada, sem anunciar SSO inexistente.
 | Storage virtual | Uso físico/capacidade da API e compromisso de discos | Diferenciar capacidade lógica, uso físico e indicador indisponível; metadata thin só quando houver fonte real |
 | Operações | API e auditoria da plataforma | Intenção, tarefa em andamento, resultado e conflito; nenhum token ou body upstream |
 | Saúde da coleta | Prometheus e exporter | Falha ou dado antigo aparece desconhecido, com regra de alerta e resolução |
-| Storage físico e energia | Evidência sanitizada do coordenador e futuros exporters | Só exibir saúde após integração; mount presente não é prova física |
+| Storage físico | API de discos PVE e probe RO no textfile do core | Capacidade física separada de filesystem; frescor por fonte e saúde desconhecida explícita |
+| Energia | Sem fonte integrada | Não inferir energia ou temperatura a partir de mounts ou SMART |
 | Mídia/consumidores | Exporters privados autorizados por projeto | Catálogo ou dashboard sem target não significa aplicação monitorada |
 
 O dashboard central deve mostrar o nó, todas as VMs autorizadas e o projeto
@@ -109,7 +112,8 @@ credenciais fictícias por valores exclusivos. O Compose de observabilidade usa:
 | `HOMELAB_GRAFANA_ADMIN_USER` / `HOMELAB_GRAFANA_ADMIN_PASSWORD` | Credenciais obrigatórias do administrador inicial |
 | `HOMELAB_OBSERVABILITY_DIR` | Persistência central; default `/srv/appdata/homelab-observability` |
 | `HOMELAB_PROMETHEUS_TARGETS_DIR` | Diretório privado preexistente obrigatório para file discovery |
-| `HOMELAB_GRAFANA_ROOT_URL` | URL externa HTTPS com o subpath `/grafana/` |
+| `HOMELAB_GRAFANA_ROOT_URL` | URL externa HTTPS; o ingresso atual usa `https://grafana.greis.dev.br/` |
+| `HOMELAB_GRAFANA_SERVE_FROM_SUB_PATH` | `false` no domínio próprio atual; manter coerente com a URL externa |
 
 A API e o coletor têm configuração adicional, descrita na
 [preparação do controle](../infrastructure/control/README.md) e na tabela abaixo.
@@ -151,12 +155,24 @@ target recebe labels `guest`, `project` e `role` estáveis. O pacote
 `prometheus-node-exporter` roda dentro de cada guest, bind no IP privado e porta
 9100 com acesso apenas da VM de controle; não instalar uma nova unit no Proxmox.
 
-O dashboard inclui CPU/RAM internos, espaço dos mounts `/srv/external3` e
+Os dashboards incluem CPU/RAM internos, espaço dos mounts `/srv/external3` e
 `/srv/transcode`, readonly observado, latência de disco e métricas NFS quando
 presentes. Nenhum desses sinais substitui o lease/coordenador ou comprova
-integridade física. Lease, SMART, energia e temperatura sem exporter real
-continuam desconhecidos. O collector NFS usa sinais de `/proc`; ausência em
+integridade física. Playback oferece lease e admissão com frescor limitado;
+SMART indisponível, energia e temperatura sem fonte real continuam desconhecidos.
+O collector NFS usa sinais de `/proc`; ausência em
 guest sem cliente NFS é esperada. [Fonte do node_exporter](https://github.com/prometheus/node_exporter/blob/master/collector/nfs_linux.go).
+
+O inventário físico tem fontes separadas: GET PVE com `skipsmart=1` para os discos
+do host e probe RO de 60 s no core, compartilhando o textfile já configurado.
+O coletor central oferece métricas `homelab_storage_*` e snapshot limitado por
+frescor. PVE não revela path ou RO dos mounts nessa API; saúde periódica do host
+fica desconhecida. SMART do core só é consultado quando a verificação de energia
+permite fazê-lo sem despertar o disco. A API autenticada filtra nó e campos;
+serial, UUID e credenciais não são publicados. Ver o
+[runbook de inventário físico](runbooks/physical-storage-inventory.md) para
+configuração, limites e diagnóstico. Esse inventário não altera a autoridade
+do supervisor nem autoriza automações de recuperação.
 
 [targets/media.example.json](../deploy/observability/targets/media.example.json)
 é apenas um exemplo versionado fora do mount. Após preparar a rede e o exporter
@@ -179,12 +195,30 @@ antes de admitir outros exporters. Não há `remote_write` ou Alertmanager.
 As regras de `deploy/observability/rules/platform.yml` são avaliadas localmente
 pelo Prometheus e aparecem no dashboard; não enviam notificações externas.
 
-## Dashboard opcional do consumidor
+## Dashboards da plataforma e painel opcional do consumidor
 
 A base provisiona o datasource `Homelab Prometheus`, UID `homelab-prometheus`, com
-proxy privado `http://prometheus:9090`. A pasta versionada contém
-`infrastructure.json`, com métricas de nó/VM/storage/guests/tarefas/coleta e
-alertas locais. O checkout funciona sem caminho externo ou repo de mídia.
+proxy privado `http://prometheus:9090`. A pasta versionada contém quatro
+dashboards ligados entre si, sem acrescentar datasource ou serviço:
+
+| Dashboard | UID | Conteúdo |
+|---|---|---|
+| Visão geral | `homelab-infrastructure` | Host, VMs ligadas/paradas, RAM configurada, playback, TLS e alertas |
+| VMs · CPU e memória | `homelab-vms` | Uso interno por `MemAvailable`, disponível, livre, cache, swap e pressão |
+| Discos e espaço | `homelab-disks` | Discos físicos, fonte/frescor/SMART, filesystems, RO/RW e I/O |
+| Serviços e alertas | `homelab-services` | Exporters, serviços systemd observados, lease, TLS e alertas locais |
+
+O UID da visão geral foi preservado. VM parada aparece neutra, incluindo a edge;
+ausência de série permanece “Sem dados”. RAM do host inclui as VMs: não somar
+essa visão à memória interna dos convidados. “RAM restante · host PVE” é
+capacidade menos uso reportado pela API, não `MemAvailable` do host.
+
+O inventário físico conta cada dispositivo uma vez. Capacidade de disco não é
+espaço livre, e o mesmo filesystem visto via NFS não acrescenta capacidade.
+Os estados dos containers e suas ações ficam no portal Órbita, consultados sob
+demanda por VM; não há séries periódicas fictícias de saúde dos containers.
+Estado de processo não comprova reprodução ou readmissão de automação.
+O checkout funciona sem caminho externo ou repo de mídia.
 
 Mídia mantém `deploy/metrics/dashboards/homeserver.json` no próprio repositório.
 Para optar por esse painel, o operador obtém o arquivo de um commit revisado e o
@@ -203,8 +237,8 @@ services:
           create_host_path: false
 ```
 
-Esse override substitui toda a pasta de dashboards: copiar também o painel
-versionado de infraestrutura para o diretório privado se quiser preservá-lo.
+Esse override substitui toda a pasta de dashboards: copiar também os quatro
+JSONs da plataforma para o diretório privado se quiser preservá-los.
 Definir `HOMELAB_GRAFANA_DASHBOARDS_DIR` no `.env` privado somente ao usar esse
 override. Arquivos devem ser legíveis pelo UID 472. O merge substitui o mount do
 mesmo target; não monta checkout completo, dados ou segredos de consumidores.
@@ -240,7 +274,7 @@ escrita apenas a esse estado. O coletor não recebe mounts persistentes.
 | `CONTROL_PROFILES_JSON` | Perfis de criação revisados no servidor |
 | `CONTROL_PROTECTED_VMIDS` / `CONTROL_ALLOWED_NODES` | Proteção de alvos e nós permitidos na API |
 | `CONTROL_VM_ID` / `CONTROL_DEPENDENCIES_JSON` | Identidade protegida do controle e dependências sanitizadas por VM, definidas no servidor |
-| `HOMELAB_GRAFANA_ROOT_URL` | Origem externa e subpath `/grafana/` |
+| `HOMELAB_GRAFANA_ROOT_URL` | URL externa privada coerente com o proxy e a opção de subpath |
 
 Criar usuário/token de coleta com privilégio separado, expiração e ACL RO para
 inventário e tarefas dos nós necessários. Conferir permissões efetivas do
@@ -250,8 +284,10 @@ A prova de capacidade do backend exige os três privilégios RO globais
 sem overrides ou grupos e `privsep=1`; verifica a autoridade antes e depois
 do snapshot. Esse adapter só executa GET. Mutações usam a sessão humana
 delegada; o endpoint ACL não permite modificar o principal interno de coleta.
-O coletor só chama GET `/cluster/resources` e GET `/nodes/{node}/tasks`, sem
-seguir redirects ou proxies do ambiente. Respostas têm limite de 1 MiB,
+O coletor chama GET `/cluster/resources`, GET `/nodes/{node}/tasks` e GET
+`/nodes/{node}/disks/list?include-partitions=1&skipsmart=1`, além do exporter
+privado do core para storage. Não segue redirects ou proxies do ambiente.
+Respostas da API PVE têm limite de 1 MiB,
 requisições timeout de 5 s e janela de coleta limitada. Não imprimir o Compose
 interpolado com `.env` real. O PEM público não é segredo, mas o token é.
 
@@ -279,13 +315,15 @@ docker compose -p homelab-observability --env-file .env -f compose.observability
 Depois da rede `homelab-metrics` existir, iniciar a imagem construída com
 `docker compose -p homelab-control --env-file .env -f compose.control.yaml up -d`.
 A API publica apenas loopback 8080; o coletor 9101 fica sem porta publicada.
-O proxy privado faz HTTPS e encaminha o portal e `/grafana/`. Grafana exige
+O proxy privado faz HTTPS e encaminha os domínios próprios do portal e Grafana. Grafana exige
 cookie Secure e a própria sessão; acessar diretamente HTTP3080 não é o fluxo
 de login suportado. Rede/targets/containers saudáveis não dispensam os testes
 de série real, falha de fonte e isolamento entre VMs.
 
-Grafana atende por subpath `/grafana/`, com URL externa privada definida em
-`HOMELAB_GRAFANA_ROOT_URL` (default `https://127.0.0.1:18443/grafana/`). O proxy
+Grafana atende na raiz de `https://grafana.greis.dev.br/`, com URL externa privada
+definida em `HOMELAB_GRAFANA_ROOT_URL` e subpath desativado no `.env` do destino.
+O default do Compose ainda é `https://127.0.0.1:18443/grafana/`, para preparação.
+O proxy
 HTTPS e o túnel privado precisam estar efetivamente configurados e testados;
 bind loopback e sucesso de `config` não comprovam acesso remoto. A sessão
 Grafana continua própria. Não publicar 3080/9090 ou exporters no roteador.
@@ -307,6 +345,38 @@ Alloy, traces ou coleta geral de containers.
 As imagens implantadas preservam as versões fixadas:
 `prom/prometheus:v3.13.5` e `grafana/grafana:13.3.1`. A coleta e o provisionamento
 foram verificados em runtime; atualizações futuras exigem revisão e novo ensaio.
+
+### Memória medida e redução dos plugins Grafana
+
+A inspeção de 16/11 encontrou memória fixa nos convidados (`balloon=0`): controle
+2 GiB, core 4 GiB e playback 4 GiB. O RSS dos QEMU era aproximadamente
+1,99/3,94/3,93 GiB; dentro dos convidados, uso por `MemTotal − MemAvailable` era
+0,80/1,80/1,02 GiB. São medidas sobrepostas com semânticas diferentes. Cache
+recuperável dentro da VM pode continuar residente no host. O host tinha cerca
+de 3,61 GiB disponíveis, swap sem uso e pressão de memória sem espera observada;
+esse retrato não é um ensaio de pico ou transcode.
+
+O Grafana tinha somente datasource Prometheus, mas iniciava 13 backends de
+plugins não utilizados. O Compose os desativa por `GF_PLUGINS_DISABLE_PLUGINS`;
+Prometheus, dashboards, importação e painéis permanecem disponíveis. Após a
+recriação foram observados apenas o processo Grafana e o backend Prometheus.
+
+| Momento em 16/11/2026 | `memory.current` | Working set aproximado |
+|---|---:|---:|
+| Antes da recriação | 357,93 MiB | 337,99 MiB |
+| Após 3 minutos, 22:19:45 UTC | 350,93 MiB | 298,24 MiB |
+| Após navegar pelos quatro dashboards, 22:28:22 UTC | 367,07 MiB | 313,54 MiB |
+
+Working set aqui é `max(0, memory.current − inactive_file)` do mesmo cgroup;
+não é RSS nem soma de processos. A redução observada foi de **24,45 a 39,75 MiB**
+nessas duas leituras; cache e carga de navegação explicam a variação entre
+amostras. A leitura imediatamente após o boot não foi usada como ganho estável.
+Os contadores `oom` e `oom_kill` permaneceram em zero, com teto de 384 MiB.
+Os recibos completos e screenshots ficam no estado privado fora do Git.
+
+Não foi aplicado balloon, redução de RAM das VMs ou limpeza forçada de cache.
+Reduzir o mínimo de playback para 3 GiB deixaria o limite de 3 GiB do Jellyfin
+sem margem para SO/Docker; essa proposta exige orçamento e ensaio próprios.
 
 Para desligar, primeiro parar os exporters dos consumidores e depois usar:
 
@@ -330,22 +400,36 @@ uv sync --frozen
 uv run --frozen pytest tests/test_telemetry_collector.py tests/test_observability.py -q
 ```
 
-No destino, a implantação de 16/11 confirmou os seis targets: quatro exporters
-de guests, coletor PVE e self-scrape. O dashboard tem 22 painéis provisionados.
-No navegador real, as 22 consultas retornaram HTTP 200 sem erro: 21 tinham
-séries/linhas, enquanto a consulta de alertas firing vazia exibiu “Sem dados”.
-Login/logout próprios do Grafana e layouts desktop/390 px passaram sem
-overflow ou exceções; ausência de série não foi convertida em saúde.
-O ensaio real interrompeu coletor e exporter do controle por 150 s:
+Na revisão final de 16/11, os cinco targets estavam ativos: exporters de
+controle, core e playback, coletor PVE e self-scrape. Os quatro dashboards
+estavam provisionados e iguais aos JSONs versionados em títulos, painéis,
+variáveis e links. As 53 consultas instantâneas passaram sem NaN/Inf; 51 tinham
+dados e as duas consultas de alertas estavam vazias. O inventário retornou
+cinco discos físicos: quatro no PVE e um no core, com saúde desconhecida
+explícita quando não consultada. No navegador, os quatro dashboards renderizaram
+sem exceções ou overflow desktop, e as 53 respostas de datasource foram HTTP 200.
+Os títulos, unidade fixa em dias e tabela de modo de acesso foram conferidos.
+O portal Órbita passou 15 cenários de navegador em 1440 e 390 px, incluindo
+links seguros, fontes parciais, memória, ações com revisão e serviços protegidos.
+
+O ensaio histórico anterior, ainda com seis targets e o dashboard único de
+22 painéis, interrompeu coletor e exporter do controle por 150 s:
 `GuestExporterUnavailable` e `ProxmoxCollectionUnavailable` dispararam e
 resolveram após a volta das fontes. Ao final, todos os targets estavam ativos
 e não havia alertas. Isso não comprova entrega por canal externo.
 
-O reboot do controle preservou banco Grafana, histórico SQLite e seis targets,
+Naquele ensaio, o reboot do controle preservou banco Grafana e histórico SQLite,
 com quatro containers em execução sem OOM. O autostart usa ordem 5 antes da
-mídia. A suíte local final passou em 236 testes pytest, Ruff check/format e dez
-testes Node. Permanecem pendentes medição sob carga, notificações
-externas e sonda independente do host. A auditoria SQLite não tem poda
-automática; a retenção Prometheus não se aplica a ela. Em mudanças futuras,
+mídia. Nesta revisão, os testes focados de dashboards/observabilidade/playback
+passaram em 28 casos; o teste dependente de `promtool` foi pulado porque nem o
+binário nem a imagem local fixada estavam disponíveis. Ruff check/format e
+12 testes Node passaram. Os alertas ficam restritos ao painel por escolha do
+proprietário; notificações externas não fazem parte desta entrega. Medição sob
+carga sustentada e sonda independente do host permanecem como limitações futuras.
+
+A API já executa manutenção automática do journal SQLite no início e a cada
+hora, com retenção configurável `CONTROL_AUDIT_RETENTION_DAYS` (default 90 dias).
+O estado é consultável em `/api/v1/audit/maintenance`; essa manutenção é distinta
+da retenção Prometheus. Em mudanças futuras,
 revalidar config/regras com `promtool`, dados reais e ausência de fonte.
 Consulte [lacunas](architecture/gaps.md).

@@ -1,9 +1,107 @@
 # Estado da implementação
 
-## Acesso integralmente privado por Tailscale — 16/11/2026
+## Console Órbita e administração — 16/11/2026
+
+O portal privado foi atualizado com a identidade Órbita, cards das aplicações,
+inventário físico e serviços por VM. O navegador real mostrou 17 cards,
+incluindo dez links HTTPS publicados, sem erro JavaScript ou transbordamento
+na largura de 390 px. A lista reúne 16 componentes das três VMs ligadas e o
+card do host Proxmox. A API de mídia em estado Docker `created` aparece como
+preparada/parada; a observação de inventário limitado à sessão não é contada
+como alerta operacional. O estado dos containers não comprova por si só a
+saúde funcional de cada aplicativo.
+
+A coleta runtime usa o QGA existente e um catálogo root-owned nas VMs. Ações
+tipadas de iniciar/parar/reiniciar preservam os guards, a revisão observada,
+permissões humanas, CSRF, journal e idempotência. O aceite real reiniciou
+somente `pve-metrics`: a operação terminou com sucesso, a repetição da mesma
+chave retornou a mesma operação e a auditoria registrou o resultado. A VM
+edge continuou desligada. Não houve ação em mídia ou retomada dos downloads.
+O helper confirma healthcheck quando disponível; sem ele, a prontidão é
+limitada ao processo. Consultar o [runbook operacional](runbooks/operational-console.md).
+
+Os oito acessos administrativos dos aplicativos foram conferidos por
+login/logout. Proxmox e portal mantiveram a identidade anterior; contas comuns
+Jellyfin e contas do SO permaneceram. O Seerr mantém seu vínculo Jellyfin e
+agora atende em `https://overseer.greis.dev.br/`, pela tailnet, com certificado
+válido e sessão revogada no logout. O nome usa a grafia criada pelo proprietário.
+Credenciais e recibos detalhados permanecem privados.
+
+Grafana passou a quatro dashboards: visão geral, VMs, discos e serviços.
+As 53 consultas foram aceitas pelo Prometheus; séries de alertas vazias são
+um resultado válido. A verificação no navegador confirmou títulos, unidades,
+tabela de discos, ausência de erros de consulta/JavaScript e navegação.
+Plugins de fontes não usadas foram desabilitados. A observação estabilizada
+reduziu o working set Grafana de aproximadamente 338 para 298 MiB; após abrir
+os quatro dashboards, a leitura foi de 314 MiB. O ganho observado foi de
+24–40 MiB e varia com as consultas. A memória configurada das três VMs ligadas continua
+10 GiB, sem alterar ballooning. O painel separa RAM do host, memória das VMs
+e consumo dos containers, evitando somar camadas sobrepostas. Ver
+[observabilidade](observability.md) para medidas e limites.
+
+## Visibilidade de discos físicos — 16/11/2026
+
+A inspeção somente leitura confirmou cinco discos físicos: quatro pertencem ao
+host Proxmox (dois NVMe de aproximadamente 512 GB, um HD de 4 TB e um de 1 TB) e
+o HD USB de 18 TB permanece exclusivo do core. Os três dispositivos de origem
+continuam block-RO, com seus mounts `ro,norecovery`. O filesystem do HD de 18 TB
+permanece ext4/RW no core; a publicação NFS para playback continua RO. Nenhuma
+montagem, partição, identidade de passthrough ou origem foi alterada.
+
+A ausência anterior no portal vinha da fonte `/cluster/resources`, que lista
+datastores cadastrados e volumes virtuais, sem enumerar os dispositivos físicos.
+O HD entregue ao guest também não aparece na lista de discos locais do host.
+O código agora combina `/nodes/{node}/disks/list` com um probe somente leitura
+no core. Capacidade física, filesystem, espaço disponível e owner são campos
+distintos; partições, discos virtuais e a visão NFS não entram novamente na soma
+dos discos físicos.
+
+O probe do core foi instalado em cron de 60 segundos, com lock e timeout, usando
+o textfile do node_exporter existente. O primeiro resultado e a atualização
+automática seguinte foram lidos a partir da VM de controle, sem erro de textfile
+e sem reiniciar o exporter. A consulta SMART sem despertar o disco reportou
+`passed` naquele instante; isso não comprova a integridade do acervo. A rotina
+PVE usa `skipsmart=1`, portanto mostra saúde desconhecida, sem reaproveitar o
+`PASSED` da inspeção inicial. Paths e modo RO dos mounts do host não são expostos
+pela API de discos e continuam desconhecidos no inventário periódico; a inspeção
+operacional das origens RO é evidência separada.
+
+O coletor fornece métricas e snapshot com frescor; a nova rota autenticada
+`/api/v1/storage` exige `Sys.Audit` nos nós permitidos e filtra os campos do DTO.
+Inventário expirado ou fonte indisponível não mantém capacidades antigas como
+atuais. Após a implantação integrada, a API autenticada retornou as duas fontes
+frescas e cinco discos: quatro no PVE e um no core. A capacidade física total
+observada foi de 24,025 TB decimais, com filesystem do core de 17,997 TB e
+6,658 TB disponíveis naquele instante. Partição PVE sem filesystem retorna
+campo desconhecido, sem derrubar o restante do inventário. O endpoint de
+métricas confirmou cinco amostras de capacidade física, duas fontes frescas
+e um filesystem, sem serial ou UUID. A sessão de aceite foi encerrada.
+Recibos, inventário bruto e backup de instalação permanecem privados. Ver
+[runbook de inventário físico](runbooks/physical-storage-inventory.md).
+
+## Jellyfin local para TVs — 16/11/2026
+
+Por orientação posterior do proprietário, `http://192.168.1.20:8096` atende
+a LAN sem Tailscale e sem exigir `/jellyfin` no endereço do cliente. O DNAT
+restringe interface, origem LAN, IP de destino e porta; a VM de controle e o
+Nginx repetem a restrição. O include LAN é separado dos nove vhosts privados e
+encaminha internamente à BaseURL existente, sem modificá-la. WAN, roteador e
+VM edge não foram alterados.
+
+Pelo Windows na LAN, API pública e web responderam 200, API de usuários sem
+sessão retornou 401, login/logout com revogação passou para duas contas e a
+API administrativa recusou a conta comum com 403. Streaming Range e download
+legado retornaram 206 de 64 KiB; WebSocket legado e canônico retornaram 101.
+O proprietário confirmou entrada e reprodução pela TV no endereço raiz LAN.
+A regra persistente usa o fragmento de bridge e firewall existentes, sem
+daemon ou unit nova; sua presença foi relida e a porta 8096 pela tailnet foi
+recusada. Não houve reboot do host nem prova a partir de uma origem WAN
+externa. Ver [runbook LAN](runbooks/jellyfin-lan.md).
+
+## Nomes privados por Tailscale — 16/11/2026
 
 O proprietário revogou a publicação WAN, VPS e porta 10443. **Todos os nove
-serviços passam a usar Tailscale**, incluindo Jellyfin em
+nomes usam Tailscale**, incluindo Jellyfin em
 `https://jellyfin.greis.dev.br/jellyfin/`, com redirecionamento a partir da raiz.
 O proprietário criou o A `jellyfin.greis.dev.br` para o IP Tailscale do controle.
 O novo vhost foi implantado com destino fixo

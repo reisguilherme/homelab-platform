@@ -35,6 +35,8 @@ from .models import (
 )
 from .operations import Governance
 from .proxmox import ProxmoxClient
+from .runtime import Runtime, ServiceAction
+from .storage import StorageInventory
 
 MAINTENANCE_INTERVAL_SECONDS = 3600
 logger = logging.getLogger(__name__)
@@ -83,6 +85,8 @@ def create_app(settings, proxmox=None, audit=None):
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     sessions = SessionStore()
     service = Governance(settings, pve, store)
+    runtime = Runtime(service)
+    storage = StorageInventory(settings, pve)
     app.state.sessions, app.state.governance = sessions, service
 
     def error(request, status, code, message):
@@ -212,6 +216,24 @@ def create_app(settings, proxmox=None, audit=None):
     def profiles(session=session_dependency):
         return service.profiles(session)
 
+    @app.get("/api/v1/storage")
+    def storage_get(session=session_dependency):
+        return storage.get(session)
+
+    @app.get("/api/v1/vms/{vmid}/services")
+    def services_get(vmid: int, session=session_dependency):
+        return runtime.list(session, vmid)
+
+    @app.post("/api/v1/vms/{vmid}/services/{identifier}/actions", status_code=202)
+    def service_action(
+        vmid: int,
+        identifier: str,
+        body: ServiceAction,
+        request: Request,
+        session=session_dependency,
+    ):
+        return runtime.act(session, operation_key(request), vmid, identifier, body)
+
     @app.get("/api/v1/vms")
     def vms(session=session_dependency):
         return service.list_vms(session)
@@ -254,6 +276,8 @@ def create_app(settings, proxmox=None, audit=None):
 
     @app.get("/api/v1/operations/{identifier}")
     def operation(identifier: str, session=session_dependency):
+        if store.get(identifier)["action"].startswith("service-"):
+            return runtime.operation(session, identifier)
         return service.operation(session, identifier)
 
     @app.get("/api/v1/audit")

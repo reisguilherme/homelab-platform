@@ -70,6 +70,8 @@ services:
       PVE_CA_PEM: ${PVE_CA_PEM:?Set the trusted public Proxmox CA PEM}
       PVE_METRICS_TOKEN_ID: ${PVE_METRICS_TOKEN_ID:?Set the separate read-only collector token identity}
       PVE_METRICS_TOKEN_SECRET: ${PVE_METRICS_TOKEN_SECRET:?Set the read-only collector token secret}
+      STORAGE_CORE_EXPORTER_URL: ${STORAGE_CORE_EXPORTER_URL:-}
+      STORAGE_CORE_VMID: ${STORAGE_CORE_VMID:-}
     networks:
       egress: {}
       metrics:

@@ -1,27 +1,28 @@
 {
   "uid": "homelab-infrastructure",
-  "title": "Homelab — infraestrutura e governança",
+  "title": "Homelab · Visão geral",
   "tags": [
     "homelab",
     "infrastructure"
   ],
   "timezone": "browser",
   "schemaVersion": 40,
-  "version": 1,
+  "version": 2,
   "editable": false,
   "refresh": "30s",
   "time": {
     "from": "now-3h",
     "to": "now"
   },
-  "links": [],
   "annotations": {
     "list": []
   },
+  "description": "Estado atual do host, VMs e playback. Use os links para aprofundar recursos, discos e serviços. Memória do host e dos convidados são visões sobrepostas.",
   "panels": [
     {
-      "id": 1,
-      "title": "Coleta completa PVE (1=OK, 0=incompleta)",
+      "id": 31,
+      "title": "RAM usada · host PVE",
+      "description": "Visão do host: inclui as VMs e o Proxmox. Não somar à memória dos convidados.",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
@@ -31,24 +32,25 @@
         "x": 0,
         "y": 0,
         "w": 6,
-        "h": 5
+        "h": 4
       },
       "targets": [
         {
           "refId": "A",
-          "expr": "homelab_pve_collection_up",
-          "legendFormat": "{{node}} {{vmid}} {{project}} {{storage}} {{state}}",
+          "expr": "homelab_pve_node_memory_used_bytes",
+          "legendFormat": "{{node}}",
           "range": false,
           "instant": true
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "none",
+          "unit": "bytes",
           "noValue": "Sem dados",
           "color": {
             "mode": "palette-classic"
           },
+          "decimals": 1,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -57,8 +59,12 @@
                 "value": null
               },
               {
-                "color": "red",
+                "color": "orange",
                 "value": 80
+              },
+              {
+                "color": "red",
+                "value": 95
               }
             ]
           }
@@ -75,12 +81,15 @@
         },
         "colorMode": "value",
         "graphMode": "none",
-        "textMode": "auto"
+        "textMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true
       }
     },
     {
-      "id": 2,
-      "title": "Idade da última coleta completa",
+      "id": 32,
+      "title": "RAM restante · host PVE",
+      "description": "Capacidade menos uso reportado pelo Proxmox. Não é a medição MemAvailable de dentro dos convidados.",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
@@ -90,24 +99,25 @@
         "x": 6,
         "y": 0,
         "w": 6,
-        "h": 5
+        "h": 4
       },
       "targets": [
         {
           "refId": "A",
-          "expr": "time() - homelab_pve_last_success_timestamp_seconds",
-          "legendFormat": "{{node}} {{vmid}} {{project}} {{storage}} {{state}}",
+          "expr": "homelab_pve_node_memory_capacity_bytes - homelab_pve_node_memory_used_bytes",
+          "legendFormat": "{{node}}",
           "range": false,
           "instant": true
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "s",
+          "unit": "bytes",
           "noValue": "Sem dados",
           "color": {
             "mode": "palette-classic"
           },
+          "decimals": 1,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -116,8 +126,12 @@
                 "value": null
               },
               {
-                "color": "red",
+                "color": "orange",
                 "value": 80
+              },
+              {
+                "color": "red",
+                "value": 95
               }
             ]
           }
@@ -134,12 +148,15 @@
         },
         "colorMode": "value",
         "graphMode": "none",
-        "textMode": "auto"
+        "textMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true
       }
     },
     {
-      "id": 3,
-      "title": "Nós online observados",
+      "id": 33,
+      "title": "RAM configurada · VMs ligadas",
+      "description": "Soma dos limites das VMs ligadas; não mede uso de aplicações. VM parada é excluída.",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
@@ -149,24 +166,25 @@
         "x": 12,
         "y": 0,
         "w": 6,
-        "h": 5
+        "h": 4
       },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(homelab_pve_node_up)",
-          "legendFormat": "{{node}} {{vmid}} {{project}} {{storage}} {{state}}",
+          "expr": "sum(homelab_pve_vm_memory_capacity_bytes and on(node,vmid) (homelab_pve_vm_running == 1))",
+          "legendFormat": "Máximos das VMs ligadas",
           "range": false,
           "instant": true
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "none",
+          "unit": "bytes",
           "noValue": "Sem dados",
           "color": {
             "mode": "palette-classic"
           },
+          "decimals": 1,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -175,8 +193,12 @@
                 "value": null
               },
               {
-                "color": "red",
+                "color": "orange",
                 "value": 80
+              },
+              {
+                "color": "red",
+                "value": 95
               }
             ]
           }
@@ -193,12 +215,15 @@
         },
         "colorMode": "value",
         "graphMode": "none",
-        "textMode": "auto"
+        "textMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true
       }
     },
     {
-      "id": 4,
-      "title": "Janela de tarefas truncada (1=limite100)",
+      "id": 1,
+      "title": "Coleta do Proxmox",
+      "description": "",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
@@ -208,24 +233,25 @@
         "x": 18,
         "y": 0,
         "w": 6,
-        "h": 5
+        "h": 4
       },
       "targets": [
         {
           "refId": "A",
-          "expr": "max(homelab_pve_tasks_window_limited)",
-          "legendFormat": "{{node}} {{vmid}} {{project}} {{storage}} {{state}}",
+          "expr": "homelab_pve_collection_up",
+          "legendFormat": "Estado da coleta",
           "range": false,
           "instant": true
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "none",
+          "unit": "short",
           "noValue": "Sem dados",
           "color": {
             "mode": "palette-classic"
           },
+          "decimals": 1,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -234,11 +260,30 @@
                 "value": null
               },
               {
-                "color": "red",
+                "color": "orange",
                 "value": 80
+              },
+              {
+                "color": "red",
+                "value": 95
               }
             ]
-          }
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Incompleta",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "Atualizada",
+                  "color": "green"
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -252,1010 +297,15 @@
         },
         "colorMode": "value",
         "graphMode": "none",
-        "textMode": "auto"
-      }
-    },
-    {
-      "id": 5,
-      "title": "CPU do nó",
-      "type": "timeseries",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "homelab-prometheus"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 5,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "homelab_pve_node_cpu_ratio * 100",
-          "legendFormat": "{{node}} {{vmid}} {{project}} {{storage}} {{state}}",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent",
-          "noValue": "Sem dados",
-          "color": {
-            "mode": "palette-classic"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      }
-    },
-    {
-      "id": 6,
-      "title": "Memória do nó",
-      "type": "timeseries",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "homelab-prometheus"
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 5,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "homelab_pve_node_memory_used_bytes / homelab_pve_node_memory_capacity_bytes * 100",
-          "legendFormat": "{{node}} {{vmid}} {{project}} {{storage}} {{state}}",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent",
-          "noValue": "Sem dados",
-          "color": {
-            "mode": "palette-classic"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      }
-    },
-    {
-      "id": 7,
-      "title": "CPU por VM e projeto",
-      "type": "timeseries",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "homelab-prometheus"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 13,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "homelab_pve_vm_cpu_ratio * 100",
-          "legendFormat": "{{node}} {{vmid}} {{project}} {{storage}} {{state}}",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent",
-          "noValue": "Sem dados",
-          "color": {
-            "mode": "palette-classic"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      }
-    },
-    {
-      "id": 8,
-      "title": "Memória por VM",
-      "type": "timeseries",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "homelab-prometheus"
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 13,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "homelab_pve_vm_memory_used_bytes",
-          "legendFormat": "{{node}} {{vmid}} {{project}} {{storage}} {{state}}",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "bytes",
-          "noValue": "Sem dados",
-          "color": {
-            "mode": "palette-classic"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
+        "textMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true
       }
     },
     {
       "id": 9,
-      "title": "Estado das VMs (1=running)",
-      "type": "table",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "homelab-prometheus"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 21,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "homelab_pve_vm_running",
-          "legendFormat": "{{node}} {{vmid}} {{project}} {{storage}} {{state}}",
-          "range": false,
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "noValue": "Sem dados",
-          "color": {
-            "mode": "palette-classic"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "showHeader": true
-      }
-    },
-    {
-      "id": 10,
-      "title": "Uso de storage observado / metadata thin não coletada",
-      "type": "timeseries",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "homelab-prometheus"
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 21,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "homelab_pve_storage_used_bytes / homelab_pve_storage_capacity_bytes * 100",
-          "legendFormat": "{{node}} {{vmid}} {{project}} {{storage}} {{state}}",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent",
-          "noValue": "Sem dados",
-          "color": {
-            "mode": "palette-classic"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      }
-    },
-    {
-      "id": 11,
-      "title": "Até100 tarefas da última hora",
-      "type": "table",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "homelab-prometheus"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 29,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "homelab_pve_recent_tasks",
-          "legendFormat": "{{node}} {{vmid}} {{project}} {{storage}} {{state}}",
-          "range": false,
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "noValue": "Sem dados",
-          "color": {
-            "mode": "palette-classic"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "showHeader": true
-      }
-    },
-    {
-      "id": 12,
-      "title": "Alertas locais ativos / sem entrega externa",
-      "type": "table",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "homelab-prometheus"
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 29,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "ALERTS{owner=\"homelab\",alertstate=\"firing\"}",
-          "legendFormat": "{{node}} {{vmid}} {{project}} {{storage}} {{state}}",
-          "range": false,
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "noValue": "Sem dados",
-          "color": {
-            "mode": "palette-classic"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "showHeader": true
-      }
-    },
-    {
-      "id": 13,
-      "title": "Estado por fonte de coleta",
-      "type": "table",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "homelab-prometheus"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 37,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "homelab_pve_source_up",
-          "legendFormat": "{{node}} {{vmid}} {{project}} {{storage}} {{state}}",
-          "range": false,
-          "instant": true
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "noValue": "Sem dados",
-          "color": {
-            "mode": "palette-classic"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "showHeader": true
-      }
-    },
-    {
-      "id": 14,
-      "title": "Scrape do exporter (processo não prova saúdePVE)",
-      "type": "timeseries",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "homelab-prometheus"
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 37,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "up{job=\"homelab-pve\"}",
-          "legendFormat": "{{node}} {{vmid}} {{project}} {{storage}} {{state}}",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "noValue": "Sem dados",
-          "color": {
-            "mode": "palette-classic"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      }
-    },
-    {
-      "id": 15,
-      "title": "CPU dentro dos convidados",
-      "type": "timeseries",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "homelab-prometheus"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 45,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "100 * (1 - avg by (guest) (rate(node_cpu_seconds_total{job=\"guests\",mode=\"idle\"}[5m])))",
-          "legendFormat": "{{guest}} {{mountpoint}} {{device}} {{method}}",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "percent",
-          "noValue": "Sem dados",
-          "color": {
-            "mode": "palette-classic"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      }
-    },
-    {
-      "id": 16,
-      "title": "RAM disponível dentro dos convidados",
-      "type": "timeseries",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "homelab-prometheus"
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 45,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "node_memory_MemAvailable_bytes{job=\"guests\"}",
-          "legendFormat": "{{guest}} {{mountpoint}} {{device}} {{method}}",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "bytes",
-          "noValue": "Sem dados",
-          "color": {
-            "mode": "palette-classic"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      }
-    },
-    {
-      "id": 17,
-      "title": "HD18TB e transcode — espaço disponível observado",
-      "type": "timeseries",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "homelab-prometheus"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 53,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "node_filesystem_avail_bytes{job=\"guests\",mountpoint=~\"/srv/external3|/srv/transcode\"}",
-          "legendFormat": "{{guest}} {{mountpoint}} {{device}} {{method}}",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "bytes",
-          "noValue": "Sem dados",
-          "color": {
-            "mode": "palette-classic"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      }
-    },
-    {
-      "id": 18,
-      "title": "Filesystem somente leitura observado (1=RO)",
-      "type": "timeseries",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "homelab-prometheus"
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 53,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "node_filesystem_readonly{job=\"guests\",mountpoint=~\"/srv/external3|/srv/transcode|/srv/media-view/media\"}",
-          "legendFormat": "{{guest}} {{mountpoint}} {{device}} {{method}}",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "noValue": "Sem dados",
-          "color": {
-            "mode": "palette-classic"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      }
-    },
-    {
-      "id": 19,
-      "title": "Latência média de leitura de discos",
-      "type": "timeseries",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "homelab-prometheus"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 61,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "rate(node_disk_read_time_seconds_total{job=\"guests\"}[5m]) / rate(node_disk_reads_completed_total{job=\"guests\"}[5m])",
-          "legendFormat": "{{guest}} {{mountpoint}} {{device}} {{method}}",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "s",
-          "noValue": "Sem dados",
-          "color": {
-            "mode": "palette-classic"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      }
-    },
-    {
-      "id": 20,
-      "title": "Pedidos NFS do cliente / somente se coletados",
-      "type": "timeseries",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "homelab-prometheus"
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 61,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (guest, method) (rate(node_nfs_requests_total{job=\"guests\"}[5m]))",
-          "legendFormat": "{{guest}} {{mountpoint}} {{device}} {{method}}",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "reqps",
-          "noValue": "Sem dados",
-          "color": {
-            "mode": "palette-classic"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      }
-    },
-    {
-      "id": 21,
-      "title": "Retransmissões RPC NFS / somente se coletadas",
-      "type": "timeseries",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "homelab-prometheus"
-      },
-      "gridPos": {
-        "x": 0,
-        "y": 69,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "rate(node_nfs_rpc_retransmissions_total{job=\"guests\"}[5m])",
-          "legendFormat": "{{guest}} {{mountpoint}} {{device}} {{method}}",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "noValue": "Sem dados",
-          "color": {
-            "mode": "palette-classic"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      }
-    },
-    {
-      "id": 22,
-      "title": "Exporters dos convidados (1=alcançável)",
-      "type": "timeseries",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "homelab-prometheus"
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 69,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "up{job=\"guests\"}",
-          "legendFormat": "{{guest}} {{mountpoint}} {{device}} {{method}}",
-          "range": true,
-          "instant": false
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "none",
-          "noValue": "Sem dados",
-          "color": {
-            "mode": "palette-classic"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "none"
-        }
-      }
-    },
-    {
-      "id": 23,
-      "title": "Jellyfin disponível (1=HTTP e admissão)",
+      "title": "Estado das VMs",
+      "description": "Estado de energia observado no Proxmox. Parada é neutra; não significa falha. A edge foi desligada intencionalmente e não tem exporter esperado.",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
@@ -1263,9 +313,300 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 77,
-        "w": 8,
-        "h": 5
+        "y": 4,
+        "w": 24,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "homelab_pve_vm_running",
+          "legendFormat": "VM {{vmid}}",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "Sem dados",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 95
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Parada",
+                  "color": "gray"
+                },
+                "1": {
+                  "text": "Ligada",
+                  "color": "green"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "VM 110"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Controle · 110"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "VM 120"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Core · 120"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "VM 121"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Playback · 121"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "VM 122"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Edge · 122"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true
+      }
+    },
+    {
+      "id": 5,
+      "title": "CPU do host",
+      "description": "",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "homelab-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * homelab_pve_node_cpu_ratio",
+          "legendFormat": "{{node}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "Sem dados",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 95
+              }
+            ]
+          },
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false,
+            "showPoints": "never",
+            "axisLabel": "",
+            "axisPlacement": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "RAM do host · uso e capacidade",
+      "description": "O host já inclui a memória residente das VMs. Os detalhes por VM mostram o uso interno por MemAvailable.",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "homelab-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "homelab_pve_node_memory_used_bytes",
+          "legendFormat": "Usada · {{node}}",
+          "range": true,
+          "instant": false
+        },
+        {
+          "refId": "B",
+          "expr": "homelab_pve_node_memory_capacity_bytes",
+          "legendFormat": "Capacidade · {{node}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "noValue": "Sem dados",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 95
+              }
+            ]
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false,
+            "showPoints": "never",
+            "axisLabel": "",
+            "axisPlacement": "auto"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 23,
+      "title": "Jellyfin · acesso admitido",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "homelab-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 15,
+        "w": 6,
+        "h": 4
       },
       "targets": [
         {
@@ -1295,7 +636,22 @@
                 "color": "green"
               }
             ]
-          }
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Indisponível",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "Disponível",
+                  "color": "green"
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -1316,17 +672,17 @@
     },
     {
       "id": 24,
-      "title": "Storage admitido (1=lease válida)",
+      "title": "Storage · admissão",
       "type": "stat",
       "datasource": {
         "type": "prometheus",
         "uid": "homelab-prometheus"
       },
       "gridPos": {
-        "x": 8,
-        "y": 77,
-        "w": 8,
-        "h": 5
+        "x": 6,
+        "y": 15,
+        "w": 6,
+        "h": 4
       },
       "targets": [
         {
@@ -1356,7 +712,22 @@
                 "color": "green"
               }
             ]
-          }
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Bloqueado",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "Admitido",
+                  "color": "green"
+                }
+              }
+            }
+          ]
         },
         "overrides": []
       },
@@ -1384,10 +755,10 @@
         "uid": "homelab-prometheus"
       },
       "gridPos": {
-        "x": 16,
-        "y": 77,
-        "w": 8,
-        "h": 5
+        "x": 12,
+        "y": 15,
+        "w": 6,
+        "h": 4
       },
       "targets": [
         {
@@ -1409,16 +780,16 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": null,
-                "color": "red"
+                "color": "red",
+                "value": null
               },
               {
-                "value": 0,
-                "color": "green"
+                "color": "orange",
+                "value": 7
               },
               {
-                "value": 60,
-                "color": "red"
+                "color": "green",
+                "value": 21
               }
             ]
           }
@@ -1439,6 +810,342 @@
         "graphMode": "none",
         "justifyMode": "auto"
       }
+    },
+    {
+      "id": 26,
+      "title": "Certificado privado · dias restantes",
+      "description": "A renovação DNS-01 é manual. Aviso abaixo de 21 dias; crítico abaixo de 7.",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "homelab-prometheus"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 15,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(homelab_tls_certificate_not_after_seconds{certificate=\"private\"} - time()) / 86400",
+          "legendFormat": "TLS privado",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: dias",
+          "noValue": "Sem dados",
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 7
+              },
+              {
+                "color": "green",
+                "value": 21
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true
+      }
+    },
+    {
+      "id": 10,
+      "title": "Storage do Proxmox · ocupação",
+      "description": "Pools do Proxmox, não inventário físico. Abra Discos e espaço para HDs, SSDs, origem dos dados e mounts.",
+      "type": "table",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "homelab-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 19,
+        "w": 12,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * homelab_pve_storage_used_bytes / homelab_pve_storage_capacity_bytes",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "noValue": "Sem dados",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 95
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": []
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "job": true,
+              "instance": true
+            },
+            "indexByName": {
+              "node": 0,
+              "storage": 1,
+              "Value": 2
+            },
+            "renameByName": {
+              "node": "Nó",
+              "storage": "Storage",
+              "Value": "Uso (%)"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Tarefas do Proxmox · última hora",
+      "description": "Até 100 tarefas por nó. Detalhes de coleta mostram se a janela foi truncada.",
+      "type": "stat",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "homelab-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 19,
+        "w": 12,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "homelab_pve_recent_tasks",
+          "legendFormat": "{{state}}",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "Sem dados",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 95
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto",
+        "wideLayout": true
+      }
+    },
+    {
+      "id": 12,
+      "title": "Alertas locais em disparo",
+      "description": "Lista vazia significa nenhum alerta retornado. Confirme coleta atualizada acima. Os alertas não têm entrega externa.",
+      "type": "table",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "homelab-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 25,
+        "w": 24,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "ALERTS{owner=\"homelab\",alertstate=\"firing\"}",
+          "legendFormat": "",
+          "range": false,
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "Sem dados",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 95
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": []
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "job": true,
+              "instance": true
+            },
+            "indexByName": {
+              "alertname": 0,
+              "severity": 1,
+              "guest": 2,
+              "instance": 3,
+              "Value": 4
+            },
+            "renameByName": {
+              "alertname": "Alerta",
+              "severity": "Severidade",
+              "guest": "VM",
+              "instance": "Origem",
+              "Value": "Valor"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "title": "Visão geral",
+      "type": "link",
+      "url": "/d/homelab-infrastructure",
+      "targetBlank": false,
+      "includeVars": true,
+      "keepTime": true
+    },
+    {
+      "title": "VMs · CPU e memória",
+      "type": "link",
+      "url": "/d/homelab-vms",
+      "targetBlank": false,
+      "includeVars": true,
+      "keepTime": true
+    },
+    {
+      "title": "Discos e espaço",
+      "type": "link",
+      "url": "/d/homelab-disks",
+      "targetBlank": false,
+      "includeVars": true,
+      "keepTime": true
+    },
+    {
+      "title": "Serviços e alertas",
+      "type": "link",
+      "url": "/d/homelab-services",
+      "targetBlank": false,
+      "includeVars": true,
+      "keepTime": true
     }
   ]
 }

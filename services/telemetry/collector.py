@@ -12,6 +12,8 @@ from urllib.error import HTTPError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, HTTPSHandler, ProxyHandler, Request, build_opener
 
+from services.telemetry import storage
+
 MAX_BODY = 1024 * 1024
 MAX_RESOURCES = 2048
 MAX_NODES = 16
@@ -49,9 +51,12 @@ class PveClient:
         self.opener = build_opener(ProxyHandler({}), HTTPSHandler(context=context), NoRedirect())
 
     def get(self, path):
-        if path != "/cluster/resources" and not re.fullmatch(
+        allowed = (
             r"/nodes/[A-Za-z0-9][A-Za-z0-9_.-]{0,63}/tasks\?source=all&limit=100&since=[0-9]+",
-            path,
+            r"/nodes/[A-Za-z0-9][A-Za-z0-9_.-]{0,63}/disks/list\?include-partitions=1&skipsmart=1",
+        )
+        if path != "/cluster/resources" and not any(
+            re.fullmatch(pattern, path) for pattern in allowed
         ):
             raise ValueError("endpoint not allowed")
         request = Request(
@@ -173,7 +178,7 @@ def task_metrics(node, tasks):
 
 
 class CollectorState:
-    def __init__(self):
+    def __init__(self, core_fetch=None, core_vmid=None):
         self.lock = threading.Lock()
         self.last_success = 0
         self.last_attempt = None
@@ -181,12 +186,72 @@ class CollectorState:
         self.up = False
         self.duration = 0
         self.metrics = ""
+        self.core_fetch, self.core_vmid = core_fetch, core_vmid
+        self.storage_sources = []
+        self.storage_disks = []
+        self.storage_last_success = {}
+        self.storage_timestamp = 0
+
+    def collect_storage(self, fetch, resources, nodes, timestamp, started):
+        sources, disks = [], []
+        with self.lock:
+            last_success = dict(self.storage_last_success)
+        for node in nodes:
+            source = {
+                "scope": "pve",
+                "node": node,
+                "state": "unknown",
+                "collectedAt": None,
+                "reason": "unavailable",
+            }
+            try:
+                if time.monotonic() - started >= 25:
+                    raise TimeoutError("collection deadline")
+                rows = fetch(f"/nodes/{node}/disks/list?include-partitions=1&skipsmart=1")
+                disks.extend(storage.pve_disks(node, rows))
+                source.update(state="fresh", collectedAt=storage.iso(timestamp), reason=None)
+                last_success[("pve", node)] = timestamp
+            except Exception:
+                pass
+            sources.append(source)
+        core_nodes = {
+            row.get("node")
+            for row in resources
+            if row.get("type") == "qemu" and row.get("vmid") == self.core_vmid
+        }
+        core_node = (
+            next(iter(core_nodes)) if len(core_nodes) == 1 else (nodes[0] if nodes else "unknown")
+        )
+        source = {
+            "scope": "core",
+            "node": core_node,
+            "state": "unknown",
+            "collectedAt": None,
+            "reason": "not_configured",
+        }
+        if self.core_fetch is not None:
+            source["reason"] = "unavailable"
+            try:
+                if len(core_nodes) != 1 or time.monotonic() - started >= 25:
+                    raise ValueError("core source unavailable")
+                probe = storage.parse_probe(
+                    self.core_fetch(), node=core_node, vmid=self.core_vmid, now=timestamp
+                )
+                disks.extend(probe["disks"])
+                source.update(
+                    state="fresh", collectedAt=storage.iso(probe["timestamp"]), reason=None
+                )
+                last_success[("core", core_node)] = probe["timestamp"]
+            except Exception:
+                pass
+        sources.append(source)
+        return sources, disks, last_success
 
     def collect(self, fetch, now=None):
         started = time.monotonic()
         timestamp = time.time() if now is None else now
         freshness = started if now is None else now
-        lines, healthy = [], True
+        lines, healthy, resources = [], True, []
         try:
             resources = fetch("/cluster/resources")
             lines.append(resource_metrics(resources))
@@ -196,6 +261,7 @@ class CollectorState:
                 raise ValueError("invalid node count")
         except Exception:
             nodes, healthy = [], False
+            resources = []
             lines = [sample("source_up", {"source": "resources", "node": "all"}, 0)]
         for node in nodes:
             try:
@@ -209,11 +275,17 @@ class CollectorState:
             except Exception:
                 healthy = False
                 lines.append(sample("source_up", {"source": "tasks", "node": node}, 0))
+        sources, disks, last_success = self.collect_storage(
+            fetch, resources, nodes, timestamp, started
+        )
         with self.lock:
             self.metrics = "".join(lines)
             self.up = healthy
             self.last_attempt = freshness
             self.duration = time.monotonic() - started
+            self.storage_sources, self.storage_disks = sources, disks
+            self.storage_last_success = last_success
+            self.storage_timestamp = timestamp
             if healthy:
                 self.last_success = timestamp
             else:
@@ -228,15 +300,55 @@ class CollectorState:
             text += sample("collection_duration_seconds", {}, self.duration)
             text += "# TYPE homelab_pve_collection_errors_total counter\n"
             text += sample("collection_errors_total", {}, self.errors)
-            return text + (self.metrics if fresh else "")
+            text += self.metrics if fresh else ""
+        inventory = self.inventory(now=now)
+        for source in inventory["sources"]:
+            labels = {key: source[key] for key in ("scope", "node")}
+            text += storage.metric("source_up", labels, int(source["state"] == "fresh"))
+            last = self.storage_last_success.get((source["scope"], source["node"]), 0)
+            text += storage.metric("last_success_timestamp_seconds", labels, last)
+        return text + storage.inventory_metrics(inventory["disks"])
+
+    def inventory(self, now=None, wall=None):
+        now = time.monotonic() if now is None else now
+        wall = time.time() if wall is None else wall
+        with self.lock:
+            fresh = self.last_attempt is not None and 0 <= now - self.last_attempt <= STALE_AFTER
+            sources = [dict(source) for source in self.storage_sources]
+            disks = list(self.storage_disks)
+            timestamp = self.storage_timestamp
+            last_success = dict(self.storage_last_success)
+        for source in sources:
+            last = last_success.get((source["scope"], source["node"]), 0)
+            expired = (
+                source["scope"] == "core" and not 0 <= wall - last <= storage.PROBE_STALE_AFTER
+            )
+            if not fresh or (source["state"] == "fresh" and expired):
+                source.update(state="stale", reason="observation_expired")
+        valid = {
+            (source["scope"], source["node"]) for source in sources if source["state"] == "fresh"
+        }
+        return {
+            "collectedAt": storage.iso(timestamp) if timestamp else None,
+            "sourceState": "fresh"
+            if sources and len(valid) == len(sources)
+            else "partial"
+            if valid
+            else "unknown",
+            "sources": sources,
+            "disks": [disk for disk in disks if (disk["scope"], disk["node"]) in valid],
+        }
 
 
 def handler_for(state):
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             if self.path == "/metrics":
-                body = state.render().encode("ascii")
+                body = state.render().encode("utf-8")
                 content_type = "text/plain; version=0.0.4; charset=utf-8"
+            elif self.path == "/inventory":
+                body = json.dumps(state.inventory()).encode("utf-8")
+                content_type = "application/json"
             elif self.path == "/healthz":
                 body, content_type = b'{"alive":true}\n', "application/json"
             else:
@@ -266,7 +378,15 @@ def main():
         )
     except Exception:
         raise SystemExit("Invalid collector configuration; values suppressed") from None
-    state = CollectorState()
+    core_url = os.environ.get("STORAGE_CORE_EXPORTER_URL")
+    try:
+        core_client = storage.ExporterClient(core_url) if core_url else None
+        core_vmid = int(os.environ["STORAGE_CORE_VMID"]) if core_client else None
+        if core_vmid is not None and not 1 <= core_vmid <= 999999999:
+            raise ValueError("invalid core VM")
+    except (ValueError, KeyError):
+        raise SystemExit("Invalid storage source configuration; values suppressed") from None
+    state = CollectorState(core_client.get if core_client else None, core_vmid)
     server = ThreadingHTTPServer(("0.0.0.0", 9101), handler_for(state))
     server.daemon_threads = True
     threading.Thread(target=server.serve_forever, daemon=True).start()

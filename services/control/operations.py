@@ -78,6 +78,8 @@ class Governance:
             "status": resource.get("status", "unknown"),
             "cores": int(config.get("cores", 1)) * int(config.get("sockets", 1)),
             "memoryMiB": memory(config),
+            "memoryUsedMiB": round(resource["mem"] / MIB, 1) if "mem" in resource else None,
+            "cpu": resource.get("cpu"),
             "diskGiB": round(resource.get("maxdisk", 0) / GIB, 2),
             "digest": config.get("digest"),
             "pending": pending_names,

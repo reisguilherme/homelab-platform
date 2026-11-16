@@ -1,5 +1,30 @@
 # Serviços privados por Tailscale
 
+## Extensão Seerr — 16/11/2026
+
+O proprietário adicionou `overseer.greis.dev.br` (grafia escolhida por ele).
+Esse décimo nome aponta para o mesmo IP Tailscale do controle e usa o
+certificado wildcard existente. O include opcional
+[`seerr-private.nginx.conf.template`](../../infrastructure/control/seerr-private.nginx.conf.template)
+encaminha à porta 5055 do core, com hostname/SNI fixos e protocolo HTTPS
+informado ao aplicativo. Aplicar somente as duas permissões correspondentes
+no firewall: saída do controle e entrada do core para esse destino/porta.
+Não abrir a porta no roteador nem publicar a interface nativa na WAN.
+
+O aceite real conferiu login via Jellyfin na mesma conta administrativa,
+consulta autenticada, logout e recusa após logout; cookies de sessão usam
+Secure e HttpOnly. Host/SNI divergente retornou 421. Os nove nomes anteriores
+continuaram respondendo 200 com TLS válido; a entrada Jellyfin LAN permaneceu
+disponível. O catálogo operacional do core fornece esse endereço ao card Seerr.
+Os relatos das nove entradas abaixo descrevem a implantação anterior.
+
+## Implantação das nove entradas anteriores
+
+Jellyfin também possui a entrada LAN **`http://192.168.1.20:8096`**, autorizada
+para TVs sem Tailscale. Ela usa listener e regras separados, conforme o
+[runbook LAN](jellyfin-lan.md). Os nove nomes deste documento continuam pela
+tailnet; a exceção LAN não publica serviços na WAN.
+
 O desenho atual concentra os nove nomes privados no Nginx de `homelab-control`, conforme
 [domínios e acesso](../architecture/access-domains.md). A implantação em
 16/11/2026 usou Certbot/DNS-01 com TXT manual no Registro.br, sem Cloudflare.

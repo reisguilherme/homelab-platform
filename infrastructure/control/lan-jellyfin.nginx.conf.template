@@ -1,0 +1,81 @@
+# Separate HTTP listener for the owner's LAN. Keep all Tailscale vhosts intact.
+map $http_upgrade $homelab_lan_connection { default upgrade; '' close; }
+map $uri $homelab_lan_legacy_path {
+    default 0;
+    ~^/(?:jellyfin/)?socket$ 1;
+    "~^/(?:jellyfin/)?Items/(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/Download$" 1;
+}
+map $args $homelab_lan_canonical_key_present {
+    default 0;
+    "~*(?:^|&)ApiKey(?:=|&|$)" 1;
+}
+map "$http_authorization|$http_x_emby_authorization|$http_x_emby_token|$http_x_mediabrowser_token|$homelab_lan_canonical_key_present" $homelab_lan_modern_auth_present {
+    default 1;
+    "||||0" 0;
+}
+map $args $homelab_lan_legacy_key_present {
+    default 0;
+    "~*(?:^|&)api_key(?:=|&|$)" 1;
+}
+map $args $homelab_lan_legacy_key_duplicate {
+    default 0;
+    "~*(?:^|&)api_key(?:=[^&]*)?(?:&[^&]*)*&api_key(?:=|&|$)" 1;
+}
+map $arg_api_key $homelab_lan_legacy_key_valid {
+    default 0;
+    "~^[A-Za-z0-9._~-]{1,4096}$" 1;
+}
+map $args $homelab_lan_encoded_query_name {
+    default 0;
+    "~(?:^|&)[^=&]*%[0-9A-Fa-f]{2}[^=&]*(?:=|&|$)" 1;
+}
+map "$homelab_lan_legacy_path:$homelab_lan_modern_auth_present:$homelab_lan_legacy_key_present" $homelab_lan_legacy_eligible {
+    default 0;
+    "1:0:1" 1;
+}
+map "$homelab_lan_legacy_eligible:$homelab_lan_legacy_key_duplicate:$homelab_lan_legacy_key_valid:$homelab_lan_encoded_query_name" $homelab_lan_authorization {
+    default $http_authorization;
+    "1:0:1:0" 'MediaBrowser Token="$arg_api_key"';
+}
+map "$homelab_lan_legacy_eligible:$homelab_lan_legacy_key_duplicate:$homelab_lan_legacy_key_valid:$homelab_lan_encoded_query_name" $homelab_lan_reject_legacy {
+    default 0;
+    "1:0:1:0" 0;
+    ~^1: 1;
+}
+
+server {
+    listen @@CONTROL_IP@@:8096;
+    server_name @@LAN_IP@@;
+    allow @@LAN_CIDR@@;
+    deny all;
+    server_tokens off;
+    access_log off;
+    error_log /dev/null crit;
+    if ($homelab_lan_reject_legacy) { return 400; }
+    client_max_body_size 64m;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy same-origin always;
+    proxy_http_version 1.1;
+    proxy_set_header Host @@LAN_IP@@:8096;
+    proxy_set_header Authorization $homelab_lan_authorization;
+    proxy_set_header X-Forwarded-Host @@LAN_IP@@:8096;
+    proxy_set_header X-Forwarded-Proto http;
+    proxy_set_header X-Forwarded-Port 8096;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $homelab_lan_connection;
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_request_buffering off;
+    proxy_buffering off;
+    location = /jellyfin { return 308 http://@@LAN_IP@@:8096/jellyfin/; }
+    location /jellyfin/ {
+        proxy_pass http://@@PLAYBACK_IP@@:8096;
+    }
+    location / {
+        # Native TV clients can configure only http://LAN_IP:8096.
+        # Prefix conversion is internal; Jellyfin's global BaseURL stays unchanged.
+        proxy_pass http://@@PLAYBACK_IP@@:8096/jellyfin/;
+    }
+}

@@ -22,7 +22,7 @@ export async function runBrowserChecks() {
   check(document.getElementById('workspace').hidden, 'Challenge must not authenticate');
   check(document.getElementById('password').value === '', 'Password remains after challenge');
   value('totp', '12345678'); click('Confirmar acesso');
-  await wait(() => !document.getElementById('workspace').hidden && !document.getElementById('refresh').disabled && document.getElementById('overview-content').textContent.includes('125,7 GiB'), 'Overview not loaded');
+  await wait(() => !document.getElementById('workspace').hidden && !document.getElementById('refresh').disabled && document.getElementById('overview-content').textContent.includes('RAM usada · host'), 'Overview not loaded');
   check(document.querySelectorAll('[style]').length === 0, 'Inline CSS violates CSP');
   passed.push('Login/TOTP, password clearing, overview and CSP');
 
@@ -117,5 +117,73 @@ export async function runBrowserChecks() {
   check(document.getElementById('task-count').hidden, 'Late mutation response leaked into another session');
   await fixture({ completed: true });
   passed.push('Late mutation response is discarded after session change');
+  return { passed, count: passed.length };
+}
+
+export async function runResourceBrowserChecks() {
+  if (location.origin !== 'http://127.0.0.1:8765') throw new Error('Synthetic loopback fixture required.');
+  const passed = [];
+  const check = (condition, message) => { if (!condition) throw new Error(message); };
+  const wait = async (predicate, message) => { const until = Date.now() + 6500; while (!predicate()) { if (Date.now() > until) throw new Error(message); await new Promise(resolve => setTimeout(resolve, 40)); } };
+  const fixture = body => fetch('/__fixture', { method: 'POST', body: JSON.stringify(body) });
+  const requests = async () => (await (await fetch('/__fixture')).json()).requests;
+  const content = () => document.getElementById('detail-tab-content');
+  const find = (root, label) => [...root.querySelectorAll('button')].find(node => node.textContent.trim() === label);
+  const click = (root, label) => { const node = find(root, label); check(node && !node.disabled, `Missing control: ${label}`); node.click(); };
+  const refresh = async () => { document.getElementById('refresh').click(); await wait(() => !document.getElementById('refresh').disabled, 'Refresh incomplete'); };
+  check(!document.getElementById('workspace').hidden, 'Run the authenticated browser checks first.');
+  await fixture({ vmStatus: 'running', completed: true });
+  document.querySelector('[data-view="overview"]').click(); await refresh();
+  click(document.getElementById('service-catalog'), 'Atualizar serviços');
+  await wait(() => document.querySelectorAll('.app-card').length === 3, 'Service or hypervisor cards missing');
+  check(document.querySelector('.hypervisor-card a')?.getAttribute('href') === 'https://console.example.test/', 'Hypervisor link missing');
+  const card = [...document.querySelectorAll('.app-card')].find(node => node.textContent.includes('Radarr'));
+  check(card.querySelector('a')?.getAttribute('href') === 'https://radarr.example.test/radarr/', 'Published application URL missing');
+  check(!document.querySelector('a[href^="javascript:"]'), 'Unsafe service URL rendered');
+  const prepared = [...document.querySelectorAll('.app-card')].find(node => node.textContent.includes('Controle protegido'));
+  check(prepared.querySelector('.badge.neutral')?.textContent === 'Preparado (parado)', 'Created service was reported as unknown');
+  const attention = [...document.querySelectorAll('#overview-content .panel')].find(node => node.textContent.includes('Sinais de atenção'));
+  check(attention.querySelector('.badge').textContent === '1 sinais' && attention.querySelector('.alert-row.info')?.textContent.includes('Observação'), 'Informational scope notice counted as warning');
+  check(document.getElementById('overview-content').textContent.includes('RAM configurada · VMs ligadas'), 'Memory views collapsed');
+  passed.push('Órbita catalog has real states, safe direct links and management entry points');
+
+  document.querySelector('[data-view="storage"]').click();
+  await wait(() => document.querySelectorAll('.disk-card').length === 2, 'Physical disks missing');
+  check(![...document.getElementById('storage-content').childNodes].some(node => node.nodeType === Node.TEXT_NODE && /^(null|undefined|false)$/.test(node.textContent.trim())), 'Optional storage notice became literal text');
+  check(document.getElementById('storage-content').textContent.includes('Desconhecida'), 'Unknown SMART was hidden');
+  check(document.getElementById('storage-content').textContent.includes('/srv/media-fixture'), 'Filesystem detail missing');
+  await fixture({ fault: 'storage-partial' }); await refresh();
+  check(document.getElementById('storage-content').textContent.includes('Inventário parcial'), 'Partial source was called healthy');
+  await fixture({ fault: 'storage-unavailable' }); await refresh();
+  check(document.getElementById('storage-content').textContent.includes('discos indisponível') && !document.querySelector('.disk-card'), 'Disk error retained misleading old data');
+  passed.push('Physical disks, filesystems, unknown health, partial inventory and error states');
+
+  await fixture({ completed: true, vmStatus: 'running' });
+  document.querySelector('[data-view="vms"]').click(); click(document.getElementById('vms-content'), 'mediaserver-fixture');
+  await wait(() => !!find(document.getElementById('detail-content'), 'Serviços'), 'Services tab missing');
+  click(document.getElementById('detail-content'), 'Serviços');
+  await wait(() => content().textContent.includes('Radarr'), 'Services list missing');
+  const protectedRow = [...content().querySelectorAll('tr')].find(node => node.textContent.includes('Controle protegido'));
+  check(protectedRow && !protectedRow.querySelector('button'), 'Protected control exposed actions');
+  check(protectedRow.querySelector('.badge.neutral')?.textContent === 'Preparado (parado)', 'Service details lost prepared state');
+  check(content().textContent.includes('RAM disponível · dentro da VM'), 'Guest MemAvailable missing');
+  content().querySelector('[aria-label="Reiniciar Radarr"]').click();
+  click(document.getElementById('action-dialog'), 'Reiniciar serviço');
+  await wait(() => !document.getElementById('action-dialog').open, 'Service action submit incomplete');
+  const mutation = (await requests()).find(item => item.path === '/vms/901/services/radarr/actions' && item.method === 'POST');
+  check(mutation?.csrf && mutation.key && mutation.body.revision === 'fixture-runtime-revision' && mutation.body.action === 'restart', 'Service action lacks bound revision/CSRF/idempotency');
+  passed.push('Service control is revision-bound, CSRF-protected and excludes self-protected control');
+
+  await fixture({ fault: 'services-stale' });
+  click(content(), 'Atualizar serviços'); await wait(() => content().textContent.includes('não está atualizada'), 'Stale service state absent');
+  check(!content().querySelector('[aria-label="Reiniciar Radarr"]'), 'Stale service allows mutation');
+  await fixture({ fault: 'services-unavailable' }); click(content(), 'Atualizar serviços');
+  await wait(() => content().textContent.includes('Serviços indisponíveis'), 'Service outage absent');
+  await fixture({ vmStatus: 'stopped', completed: true }); await refresh();
+  await wait(() => content().textContent.includes('Máquina desligada'), 'Stopped VM not represented');
+  check(!content().querySelector('[aria-label="Reiniciar Radarr"]'), 'Stopped VM has stale process action');
+  passed.push('Stale, unreachable and stopped VMs do not expose stale process actions');
+  check(document.querySelectorAll('[style]').length === 0, 'Inline styles violate CSP');
+  check(document.documentElement.scrollWidth <= innerWidth, 'Page overflows viewport');
   return { passed, count: passed.length };
 }

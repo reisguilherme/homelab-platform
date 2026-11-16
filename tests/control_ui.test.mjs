@@ -93,3 +93,24 @@ test('ACL mutation is limited to explicit user or group entries', { skip: !sourc
   assert.equal(ui.canEditAclEntry({ principalType: 'token', inherited: false }), false);
   assert.equal(ui.canEditAclEntry({ principalType: 'unrecognized', inherited: false }), false);
 });
+
+test('memory overview distinguishes host accounting, active limits and guest residency', () => {
+  const result = ui.memorySummary({ totalMemoryMiB: 16000, usedMemoryMiB: 12000 }, [
+    { status: 'running', memoryMiB: 2048, memoryUsedMiB: 1800 },
+    { status: 'stopped', memoryMiB: 4096, memoryUsedMiB: 0 },
+  ]);
+  assert.deepEqual(result, { remainingMiB: 4000, activeConfiguredMiB: 2048, residentMiB: 1800, activeCount: 1 });
+  assert.equal(ui.memorySummary({}, [{ status: 'running', memoryMiB: 2048 }]).residentMiB, null);
+  assert.equal(ui.memorySummary({}, []).remainingMiB, null);
+  assert.equal(ui.memorySummary({}, []).activeConfiguredMiB, 0);
+});
+
+test('service controls require a fresh revision and the exact allowed action', () => {
+  const service = { id: 'radarr', revision: 'fresh-revision', actions: ['stop', 'restart'] };
+  assert.equal(ui.serviceActionAllowed(service, 'restart', 'fresh'), true);
+  assert.equal(ui.serviceActionAllowed(service, 'start', 'fresh'), false);
+  assert.equal(ui.serviceActionAllowed(service, 'restart', 'stale'), false);
+  assert.equal(ui.serviceActionAllowed({ ...service, revision: null }, 'restart', 'fresh'), false);
+  assert.equal(ui.serviceActionAllowed({ ...service, actions: [] }, 'stop', 'fresh'), false);
+  assert.equal(ui.serviceActionAllowed({ ...service, actions: ['delete'] }, 'delete', 'fresh'), false);
+});

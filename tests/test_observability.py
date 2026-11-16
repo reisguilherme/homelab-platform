@@ -179,6 +179,8 @@ def test_control_separates_human_sessions_and_read_only_collection():
         "PVE_CA_PEM",
         "PVE_METRICS_TOKEN_ID",
         "PVE_METRICS_TOKEN_SECRET",
+        "STORAGE_CORE_EXPORTER_URL",
+        "STORAGE_CORE_VMID",
     }
     for service in (control, collector):
         assert service["read_only"] is True and service["cap_drop"] == ["ALL"]

@@ -52,9 +52,25 @@ export function safeConsoleUrl(value) {
   catch { return null; }
 }
 
+export function memorySummary(capacity, vms) {
+  const active = (Array.isArray(vms) ? vms : []).filter(vm => vm.status === 'running');
+  const sum = field => active.every(vm => finite(vm[field]) && vm[field] >= 0) ? active.reduce((total, vm) => total + vm[field], 0) : null;
+  return {
+    remainingMiB: finite(capacity?.totalMemoryMiB) && finite(capacity?.usedMemoryMiB) && capacity.totalMemoryMiB >= capacity.usedMemoryMiB ? capacity.totalMemoryMiB - capacity.usedMemoryMiB : null,
+    activeConfiguredMiB: sum('memoryMiB'), residentMiB: sum('memoryUsedMiB'), activeCount: active.length,
+  };
+}
+
+export function serviceActionAllowed(service, action, sourceState) {
+  return sourceState === 'fresh' && ['start', 'stop', 'restart'].includes(action) &&
+    typeof service?.revision === 'string' && service.revision.length > 0 &&
+    Array.isArray(service?.actions) && service.actions.includes(action);
+}
+
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 const number = value => finite(value) ? new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 }).format(value) : '—';
 const memory = value => finite(value) ? `${number(value / 1024)} GiB` : '—';
+const bytes = value => finite(value) && value >= 0 ? value >= 1024 ** 4 ? `${number(value / 1024 ** 4)} TiB` : value >= 1024 ** 3 ? `${number(value / 1024 ** 3)} GiB` : `${number(value / 1024 ** 2)} MiB` : 'Sem dados';
 const date = value => value && Number.isFinite(Date.parse(value)) ? new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'medium' }).format(new Date(value)) : 'Sem leitura';
 const list = value => Array.isArray(value) ? value : [];
 const text = value => value == null ? '—' : String(value);
@@ -78,7 +94,7 @@ function element(tag, properties = {}, ...children) {
 }
 const h = element;
 const byId = id => document.getElementById(id);
-const replace = (id, ...nodes) => byId(id).replaceChildren(...nodes);
+const replace = (id, ...nodes) => byId(id).replaceChildren(...nodes.flat(Infinity).filter(node => node != null && node !== false));
 const button = (label, handler, className = 'button quiet', disabled = false) => h('button', { type: 'button', className, text: label, onclick: handler, disabled });
 const empty = (title, detail = '') => h('div', { className: 'empty-state' }, h('strong', { text: title }), detail);
 const loading = () => h('div', { className: 'loading', role: 'status', text: 'Consultando a origem…' });
@@ -87,7 +103,8 @@ const errorText = error => `${error.message}${error.requestId ? `\nReferência: 
 const dataList = entries => entries.length ? h('ul', { className: 'plain-list' }, entries.map(value => h('li', { text: typeof value === 'string' ? value : value?.message || value?.label || 'Informação indisponível' }))) : h('p', { className: 'muted', text: 'Nenhum item informado.' });
 
 function boot() {
-  const state = { session: null, challenge: null, overview: null, vms: [], profiles: [], vm: null, view: 'overview', detailTab: 'summary', operations: new Map(), audit: [], cursor: null, sessionEpoch: 0 };
+  const state = { session: null, challenge: null, overview: null, vms: [], vmsLoaded: false, storage: null, catalog: new Map(), catalogState: 'idle', profiles: [], vm: null, view: 'overview', detailTab: 'summary', operations: new Map(), audit: [], cursor: null, sessionEpoch: 0 };
+  let storageGeneration = 0;
   let operationTimer = null, toastTimer = null, dialogBusy = false, polling = false, dialogGeneration = 0, detailGeneration = 0;
   const api = createApi({ onUnauthorized: () => showLogin('A sessão terminou. Entre novamente para continuar.') });
 
@@ -99,6 +116,8 @@ function boot() {
     state.session = null; state.sessionEpoch++; state.challenge = null; api.setCsrf('');
     dialogGeneration++; detailGeneration++; dialogBusy = false;
     clearTimeout(operationTimer); state.operations.clear(); state.audit = []; state.vms = []; state.vm = null; state.overview = null; state.profiles = [];
+    state.storage = null; state.vmsLoaded = false; storageGeneration++;
+    state.catalog.clear(); state.catalogState = 'idle';
     if (byId('action-dialog').open) byId('action-dialog').close();
     byId('workspace').hidden = true; byId('login-screen').hidden = false;
     byId('login-form').hidden = false; byId('totp-form').hidden = true;
@@ -140,9 +159,11 @@ function boot() {
     state.view = view; notice();
     for (const node of document.querySelectorAll('.page-view')) node.hidden = node.id !== `view-${view}`;
     for (const node of document.querySelectorAll('[data-view]')) { const active = node.dataset.view === (view === 'detail' ? 'vms' : view); node.classList.toggle('active', active); if (active) node.setAttribute('aria-current', 'page'); else node.removeAttribute('aria-current'); }
-    byId('breadcrumb-current').textContent = { overview: 'Visão geral', vms: 'Máquinas virtuais', detail: 'Detalhe da máquina', activity: 'Atividades' }[view];
+    byId('breadcrumb-current').textContent = { overview: 'Visão geral', vms: 'Máquinas virtuais', storage: 'Discos e espaço', detail: 'Detalhe da máquina', activity: 'Atividades' }[view];
     if (view === 'vms') renderVms();
+    if (view === 'overview' && state.overview) renderOverview();
     if (view === 'activity') { renderOperations(); loadAudit(); }
+    if (view === 'storage') loadStorage();
   }
   for (const node of document.querySelectorAll('[data-view]')) node.addEventListener('click', () => navigate(node.dataset.view));
   byId('back-vms').addEventListener('click', () => navigate('vms'));
@@ -159,13 +180,16 @@ function boot() {
     const errors = [];
     if (results[0].status === 'fulfilled') { state.overview = results[0].value.data; renderOverview(); }
     else { state.overview = null; replace('overview-content', empty('A coleta está indisponível', errorText(results[0].reason))); byId('source-badge').replaceWith(Object.assign(badge('unavailable'), { id: 'source-badge' })); errors.push(results[0].reason); }
-    if (results[1].status === 'fulfilled') { state.vms = list(results[1].value.data?.items); renderVms(); }
-    else { state.vms = []; replace('vms-content', empty('Inventário indisponível', errorText(results[1].reason))); errors.push(results[1].reason); }
+    if (results[1].status === 'fulfilled') { state.vms = list(results[1].value.data?.items); state.vmsLoaded = true; renderVms(); }
+    else { state.vms = []; state.vmsLoaded = false; replace('vms-content', empty('Inventário indisponível', errorText(results[1].reason))); errors.push(results[1].reason); }
     if (results[2].status === 'fulfilled') state.profiles = list(results[2].value.data?.items);
     else state.profiles = [];
     if (errors.length) notice(errors.map(errorText).join('\n'), 'error');
+    if (state.overview) renderOverview();
+    if (state.vmsLoaded && state.catalogState === 'idle') loadCatalog();
     if (state.view === 'detail' && state.vm) await loadVm(state.vm.vmid, false);
     if (state.view === 'activity') await loadAudit();
+    if (state.view === 'storage') await loadStorage();
     byId('refresh').disabled = false;
   }
 
@@ -173,19 +197,35 @@ function boot() {
     return h('article', { className: 'metric' }, h('p', { className: 'metric-label', text: label }), h('p', { className: 'metric-value', text: value }), finite(percent) ? h('progress', { className: 'meter', 'aria-label': label, max: 100, value: Math.min(100, Math.max(0, percent)) }) : null, h('p', { className: 'metric-foot', text: foot }));
   }
   function renderOverview() {
-    const data = state.overview || {}, cap = data.capacity || {}, nodes = list(data.nodes), alerts = list(data.alerts);
+    const data = state.overview || {}, cap = data.capacity || {}, nodes = list(data.nodes), alerts = list(data.alerts).filter(alert => alert.level !== 'info'), observations = list(data.alerts).filter(alert => alert.level === 'info');
     const unknown = !['healthy', 'fresh', 'live', 'ok', 'available'].includes(data.sourceState);
+    const summary = memorySummary(cap, state.vms);
     byId('source-badge').replaceWith(Object.assign(badge(unknown ? 'unknown' : 'healthy', unknown ? (labels[data.sourceState] || 'Estado desconhecido') : 'Coleta disponível'), { id: 'source-badge' }));
     byId('last-update').textContent = `Leitura: ${date(data.collectedAt)}`;
     const cpu = nodes.filter(node => finite(node.cpu));
     const percent = cpu.length && !unknown ? cpu.reduce((sum, node) => sum + node.cpu * 100, 0) / cpu.length : null;
-    const metrics = h('div', { className: 'metrics' }, metric('Nós visíveis', unknown ? '—' : String(nodes.length), 'Filtrados pela sua identidade'), metric('CPU média', finite(percent) ? `${number(percent)}%` : '—', 'Utilização dos nós com leitura', percent), metric('Memória em uso', unknown ? '—' : memory(cap.usedMemoryMiB), `${memory(cap.totalMemoryMiB)} de capacidade`, finite(cap.totalMemoryMiB) && cap.totalMemoryMiB > 0 && !unknown ? cap.usedMemoryMiB / cap.totalMemoryMiB * 100 : null), metric('Storage livre', unknown ? '—' : finite(cap.freeStorageGiB) ? `${number(cap.freeStorageGiB)} GiB` : '—', 'Capacidade física informada'));
-    const nodePanel = h('article', { className: 'panel' }, h('div', { className: 'panel-header' }, h('h2', { text: 'Nós da plataforma' }), h('span', { className: 'muted', text: `${nodes.length} ${nodes.length === 1 ? 'visível' : 'visíveis'}` })), nodes.length ? nodes.map(node => h('div', { className: 'node-row' }, h('span', { className: 'node-icon', 'aria-hidden': true, text: '▤' }), h('div', { className: 'node-info' }, h('strong', { text: text(node.name) }), h('p', { text: `${memory(node.memoryMiB)} / ${memory(node.maxMemoryMiB)} RAM` })), h('div', { className: 'node-cpu' }, badge(node.status), h('p', { className: 'cell-sub', text: finite(node.cpu) ? `CPU ${number(node.cpu * 100)}%` : 'CPU desconhecida' })))) : empty('Nenhum nó disponível', 'Sem leitura, não há saúde confirmada.'));
-    const alertPanel = h('article', { className: 'panel' }, h('div', { className: 'panel-header' }, h('h2', { text: 'Sinais de atenção' }), badge(alerts.length ? 'stale' : 'neutral', `${alerts.length} alertas`)), unknown ? empty('Estado da coleta desconhecido', 'Ausência de alertas não comprova saúde.') : alerts.length ? alerts.map(alert => h('div', { className: 'alert-row' }, h('span', { className: 'alert-symbol', 'aria-hidden': true, text: '!' }), h('div', {}, h('p', { text: text(alert.message) }), h('span', { className: 'cell-sub', text: ({ critical: 'Crítico', warning: 'Atenção', info: 'Informação' })[alert.level] || 'Sinal da plataforma' })))) : empty('Nenhum alerta informado', 'Continue acompanhando a idade da coleta.'));
-    replace('overview-content', metrics, h('div', { className: 'overview-grid' }, nodePanel, alertPanel), h('div', { className: 'section-heading' }, h('h2', { text: 'Operar com contexto' })), h('div', { className: 'panel panel-body' }, h('p', { className: 'muted', text: `Memória alocada informada: ${memory(cap.allocatedMemoryMiB)}. Perfis e capacidade são validados novamente pelo servidor antes de criar uma máquina.` }), button('Ver máquinas →', () => navigate('vms'), 'button quiet')));
+    const metrics = h('div', { className: 'metrics' },
+      metric('RAM usada · host', unknown ? '—' : memory(cap.usedMemoryMiB), `${memory(cap.totalMemoryMiB)} no host, incluindo as VMs`, !unknown && cap.totalMemoryMiB > 0 ? cap.usedMemoryMiB / cap.totalMemoryMiB * 100 : null),
+      metric('RAM restante · host', unknown ? '—' : memory(summary.remainingMiB), 'Capacidade menos uso reportado pelo PVE'),
+      metric('RAM configurada · VMs ligadas', state.vmsLoaded ? memory(summary.activeConfiguredMiB) : '—', state.vmsLoaded ? `${summary.activeCount} ligadas · ${memory(summary.residentMiB)} observados pelo PVE` : 'Inventário de VMs indisponível'),
+      metric('CPU do host', finite(percent) ? `${number(percent)}%` : '—', `${nodes.length} nó(s) com leitura autorizada`, percent));
+    const vmHeading = h('div', { className: 'section-heading' }, h('h2', { text: 'Máquinas e serviços' }), button('Ver todas →', () => navigate('vms'), 'button small quiet'));
+    const cards = h('div', { className: 'vm-cards' }, state.vms.map(vm => h('article', { className: `vm-card ${vm.status === 'stopped' ? 'vm-stopped' : ''}` },
+      h('div', { className: 'vm-card-top' }, h('span', { className: 'eyebrow', text: `VM ${vm.vmid} · ${vm.project || 'Sem projeto'}` }), badge(vm.status)),
+      button(text(vm.name), () => loadVm(vm.vmid), 'vm-card-name'),
+      h('dl', { className: 'vm-resources' },
+        h('div', {}, h('dt', { text: 'RAM configurada' }), h('dd', { text: memory(vm.memoryMiB) })),
+        h('div', {}, h('dt', { text: 'RAM vista pelo PVE' }), h('dd', { text: memory(vm.memoryUsedMiB) })),
+        h('div', {}, h('dt', { text: 'CPU' }), h('dd', { text: finite(vm.cpu) ? `${number(vm.cpu * 100)}% · ${number(vm.cores)} vCPU` : `${number(vm.cores)} vCPU` }))),
+      h('div', { className: 'vm-card-footer' }, h('span', { className: 'cell-sub', text: vm.status === 'stopped' ? 'Desligada · sem processos em execução' : 'Serviços e RAM interna sob demanda' }), button('Serviços →', () => loadVm(vm.vmid, true, 'services'), 'button small quiet')))));
+    const alertPanel = h('article', { className: 'panel' }, h('div', { className: 'panel-header' }, h('h2', { text: 'Sinais de atenção' }), badge(alerts.length ? 'stale' : 'neutral', `${alerts.length} sinais`)), unknown ? empty('Estado da coleta desconhecido', 'Ausência de alertas não comprova saúde.') : alerts.length ? alerts.map(alert => h('div', { className: 'alert-row' }, h('span', { className: 'alert-symbol', 'aria-hidden': true, text: '!' }), h('div', {}, h('p', { text: text(alert.message) }), h('span', { className: 'cell-sub', text: ({ critical: 'Crítico', warning: 'Atenção' })[alert.level] || 'Sinal da plataforma' })))) : empty('Nenhum alerta informado', 'Confira também a idade da coleta.'), observations.map(observation => h('div', { className: 'alert-row info' }, h('span', { className: 'muted', 'aria-hidden': true, text: 'i' }), h('div', {}, h('p', { text: text(observation.message) }), h('span', { className: 'cell-sub', text: 'Observação' })))));
+    const nodePanel = h('article', { className: 'panel' }, h('div', { className: 'panel-header' }, h('h2', { text: 'Host e armazenamento' })), nodes.length ? nodes.map(node => h('div', { className: 'node-row' }, h('span', { className: 'node-icon', 'aria-hidden': true, text: '▤' }), h('div', { className: 'node-info' }, h('strong', { text: text(node.name) }), h('p', { text: `${memory(node.memoryMiB)} usadas / ${memory(node.maxMemoryMiB)} totais` })), badge(node.status))) : empty('Nenhum nó observado'), h('div', { className: 'panel-body' }, button('Inspecionar discos e espaço →', () => navigate('storage'), 'button quiet'), h('p', { className: 'field-help', text: 'Discos físicos e espaço dos mounts têm leituras separadas.' })));
+    const catalog = h('div', { id: 'service-catalog' });
+    replace('overview-content', metrics, catalog, h('p', { className: 'reading-note', text: 'O host já inclui as VMs. A RAM vista pelo Proxmox pode incluir cache do convidado; abra Serviços para a RAM disponível dentro de cada VM.' }), vmHeading, state.vmsLoaded ? cards : empty('Inventário de VMs indisponível'), h('div', { className: 'overview-grid overview-bottom' }, nodePanel, alertPanel));
     const links = list(data.consoleLinks).map(link => { const url = safeConsoleUrl(link.url); return url ? h('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, text(link.label), h('span', { 'aria-hidden': true, text: '↗' })) : null; }).filter(Boolean);
     if (links.length) byId('overview-content').append(h('div', { className: 'console-shortcuts' }, h('span', { className: 'muted', text: 'Consoles autorizados' }), links.map(link => link.cloneNode(true))));
     replace('console-links', ...(links.length ? links : [h('span', { className: 'muted', text: 'Nenhum console autorizado' })]));
+    renderCatalog();
   }
 
   function table(headers, rows) { return h('div', { className: 'panel table-scroll' }, h('table', { className: 'data-table' }, h('thead', {}, h('tr', {}, headers.map(label => h('th', { scope: 'col', text: label })))), h('tbody', {}, rows))); }
@@ -194,28 +234,140 @@ function boot() {
     const items = state.vms.filter(vm => `${vm.name} ${vm.project || ''} ${vm.vmid}`.toLocaleLowerCase('pt-BR').includes(query) && (filter === 'all' || vm.status === filter));
     byId('vm-count').textContent = `${items.length} máquina${items.length === 1 ? '' : 's'}`;
     if (!items.length) { replace('vms-content', empty('Nenhuma máquina nesta seleção', 'A lista mostra somente objetos autorizados para sua identidade.')); return; }
-    replace('vms-content', table(['Máquina', 'Estado', 'Projeto', 'CPU / RAM', 'Disco', 'Nó'], items.map(vm => h('tr', {}, h('td', {}, button(text(vm.name), () => loadVm(vm.vmid), 'cell-name'), h('span', { className: 'cell-sub mono', text: `VM ${vm.vmid}` })), h('td', {}, badge(vm.status)), h('td', { text: vm.project || 'Não classificado' }), h('td', {}, `${number(vm.cores)} vCPU`, h('span', { className: 'cell-sub', text: memory(vm.memoryMiB) })), h('td', { text: finite(vm.diskGiB) ? `${number(vm.diskGiB)} GiB` : '—' }), h('td', { className: 'mono', text: text(vm.node) })))));
+    replace('vms-content', table(['Máquina', 'Estado', 'Projeto', 'CPU / RAM configurada', 'RAM vista pelo PVE', 'Disco virtual', 'Nó'], items.map(vm => h('tr', {}, h('td', {}, button(text(vm.name), () => loadVm(vm.vmid), 'cell-name'), h('span', { className: 'cell-sub mono', text: `VM ${vm.vmid}` })), h('td', {}, badge(vm.status)), h('td', { text: vm.project || 'Não classificado' }), h('td', {}, `${number(vm.cores)} vCPU`, h('span', { className: 'cell-sub', text: memory(vm.memoryMiB) })), h('td', { text: memory(vm.memoryUsedMiB) }), h('td', { text: finite(vm.diskGiB) ? `${number(vm.diskGiB)} GiB` : '—' }), h('td', { className: 'mono', text: text(vm.node) })))));
   }
-  async function loadVm(vmid, changeView = true) {
-    if (changeView) { state.vm = null; state.detailTab = 'summary'; navigate('detail'); replace('detail-content', loading()); }
+  async function loadVm(vmid, changeView = true, detailTab = 'summary') {
+    if (changeView) { state.vm = null; state.detailTab = detailTab; navigate('detail'); replace('detail-content', loading()); }
     const epoch = state.sessionEpoch, generation = ++detailGeneration;
     try { const { data } = await api.request(`/vms/${encodeURIComponent(vmid)}`); if (!state.session || epoch !== state.sessionEpoch || generation !== detailGeneration) return; state.vm = data; if (state.view === 'detail') renderDetail(); }
     catch (error) { if (state.session && epoch === state.sessionEpoch && generation === detailGeneration) { state.vm = null; replace('detail-content', empty('Não foi possível ler a máquina', errorText(error))); notice(errorText(error), 'error'); } }
   }
   function renderDetail() {
     const vm = state.vm; if (!vm) return;
-    const tabs = h('div', { className: 'detail-tabs', role: 'tablist', 'aria-label': 'Detalhes da máquina' }, [['summary', 'Resumo'], ['resources', 'Recursos'], ['acl', 'Acessos']].map(([id, label], index) => button(label, () => { state.detailTab = id; renderDetail(); byId(`detail-tab-${index}`).focus(); }, `tab ${state.detailTab === id ? 'active' : ''}`)));
-    [...tabs.children].forEach((tab, index) => { tab.setAttribute('role', 'tab'); tab.setAttribute('aria-selected', String(tab.classList.contains('active'))); tab.tabIndex = tab.classList.contains('active') ? 0 : -1; tab.addEventListener('keydown', event => { if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) { event.preventDefault(); const target = event.key === 'Home' ? 0 : event.key === 'End' ? 2 : (index + (event.key === 'ArrowRight' ? 1 : 2)) % 3; tabs.children[target].click(); document.querySelectorAll('.detail-tabs .tab')[target].focus(); } }); });
+    const tabs = h('div', { className: 'detail-tabs', role: 'tablist', 'aria-label': 'Detalhes da máquina' }, [['summary', 'Resumo'], ['resources', 'Recursos'], ['acl', 'Acessos'], ['services', 'Serviços']].map(([id, label], index) => button(label, () => { state.detailTab = id; renderDetail(); byId(`detail-tab-${index}`).focus(); }, `tab ${state.detailTab === id ? 'active' : ''}`)));
+    [...tabs.children].forEach((tab, index) => { tab.setAttribute('role', 'tab'); tab.setAttribute('aria-selected', String(tab.classList.contains('active'))); tab.tabIndex = tab.classList.contains('active') ? 0 : -1; tab.addEventListener('keydown', event => { if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) { event.preventDefault(); const target = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.children.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : tabs.children.length - 1)) % tabs.children.length; tabs.children[target].click(); document.querySelectorAll('.detail-tabs .tab')[target].focus(); } }); });
     const heading = h('div', { className: 'detail-heading' }, h('div', {}, h('p', { className: 'eyebrow', text: `MÁQUINA VIRTUAL · ${vm.vmid}` }), h('h1', { id: 'detail-title', text: text(vm.name) }), h('div', { className: 'detail-meta' }, badge(vm.status), `${vm.node || 'Nó desconhecido'} · ${vm.project || 'Sem projeto'}`)), h('div', { className: 'actions' }, button('Iniciar', () => power('start'), 'button primary', !allowed(vm, 'start')), button('Desligar', () => power('shutdown'), 'button quiet', !allowed(vm, 'shutdown')), button('Reiniciar', () => power('reboot'), 'button quiet', !allowed(vm, 'reboot'))));
     [...tabs.children].forEach((tab, index) => { tab.id = `detail-tab-${index}`; tab.setAttribute('aria-controls', 'detail-tab-content'); });
     const content = h('div', { id: 'detail-tab-content', role: 'tabpanel', 'aria-labelledby': tabs.querySelector('[aria-selected="true"]').id });
     replace('detail-content', heading, tabs, content);
     if (state.detailTab === 'summary') {
-      const facts = [['CPU', `${number(vm.cores)} vCPU`], ['Memória', memory(vm.memoryMiB)], ['Discos virtuais', finite(vm.diskGiB) ? `${number(vm.diskGiB)} GiB` : '—'], ['Pool', vm.pool || 'Não informado'], ['Tags', list(vm.tags).join(', ') || 'Nenhuma'], ['Última leitura', date(vm.collectedAt)]];
+      const facts = [['CPU', `${number(vm.cores)} vCPU`], ['RAM configurada', memory(vm.memoryMiB)], ['RAM vista pelo PVE', memory(vm.memoryUsedMiB)], ['Discos virtuais', finite(vm.diskGiB) ? `${number(vm.diskGiB)} GiB` : '—'], ['Pool', vm.pool || 'Não informado'], ['Tags', list(vm.tags).join(', ') || 'Nenhuma'], ['Última leitura', date(vm.collectedAt)]];
       content.append(h('div', { className: 'detail-grid' }, h('article', { className: 'panel' }, h('div', { className: 'panel-header' }, h('h2', { text: 'Configuração' })), h('div', { className: 'panel-body' }, h('dl', { className: 'facts' }, facts.map(([label, value]) => h('div', {}, h('dt', { text: label }), h('dd', { text: value })))))), h('div', {}, h('article', { className: 'panel' }, h('div', { className: 'panel-header' }, h('h2', { text: 'Dependências protegidas' })), h('div', { className: 'panel-body' }, dataList(list(vm.dependencies)))), h('div', { className: 'section-heading' }, h('h2', { text: 'Mudanças pendentes' })), dataList(list(vm.pending)))));
       content.append(h('div', { className: 'section-heading' }, h('h2', { text: 'Ações que exigem atenção' })), h('div', { className: 'panel panel-body' }, h('p', { className: 'field-help', text: 'A parada forçada não oferece desligamento limpo ao sistema convidado. A exclusão exige prévia e confirmação do nome.' }), h('div', { className: 'form-actions' }, button('Forçar parada', () => power('stop'), 'button danger', !allowed(vm, 'stop')), button('Revisar exclusão', previewDelete, 'button danger', !allowed(vm, 'delete')))));
     } else if (state.detailTab === 'resources') renderResources(content, vm);
+    else if (state.detailTab === 'services') loadServices(content, vm);
     else loadAcl(content, vm);
+  }
+
+  async function loadCatalog() {
+    if (!state.session || !state.vmsLoaded || state.catalogState === 'loading') return;
+    const epoch = state.sessionEpoch;
+    const guests = state.vms.filter(vm => vm.status === 'running');
+    state.catalogState = 'loading'; renderCatalog();
+    const results = await Promise.allSettled(guests.map(vm => api.request(`/vms/${vm.vmid}/services`)));
+    if (!state.session || epoch !== state.sessionEpoch) return;
+    state.catalog = new Map(guests.map((vm, index) => [vm.vmid, results[index].status === 'fulfilled' ? { data: results[index].value.data } : { error: errorText(results[index].reason) }]));
+    state.catalogState = 'loaded'; renderCatalog();
+  }
+
+  function renderCatalog() {
+    const target = byId('service-catalog'); if (!target || state.view !== 'overview') return;
+    const refreshButton = button('Atualizar serviços', loadCatalog, 'button small quiet', state.catalogState === 'loading' || !state.vmsLoaded);
+    const heading = h('div', { className: 'section-heading catalog-heading' }, h('div', {}, h('p', { className: 'eyebrow', text: 'ACESSO DIRETO' }), h('h2', { text: 'Aplicações e serviços' })), refreshButton);
+    if (state.catalogState === 'loading') { target.replaceChildren(heading, loading()); return; }
+    if (!state.vmsLoaded) { target.replaceChildren(heading, empty('Inventário indisponível', 'Não foi possível consultar os serviços das VMs.')); return; }
+    const groups = state.vms.filter(vm => vm.status === 'running').map(vm => {
+      const result = state.catalog.get(vm.vmid);
+      const data = result?.data;
+      const fresh = data?.sourceState === 'fresh' && finite(Date.parse(data.collectedAt)) && Date.now() - Date.parse(data.collectedAt) <= 90000;
+      const cards = list(data?.items).map(service => {
+        const url = safeConsoleUrl(service.url);
+        const glyph = String(service.label || 'S').trim().slice(0, 2).toLocaleUpperCase('pt-BR');
+        return h('article', { className: 'app-card' },
+          h('div', { className: 'app-card-top' }, h('span', { className: 'app-glyph', 'aria-hidden': true, text: glyph }), badge(fresh ? service.state : 'stale', fresh ? ({ running: 'Em execução', exited: 'Parado', stopped: 'Parado', paused: 'Pausado', restarting: 'Reiniciando', created: 'Preparado (parado)' })[service.state] || 'Desconhecido' : 'Revalidar')),
+          h('h3', { text: service.label }), h('p', { className: 'cell-sub', text: `VM ${vm.vmid} · ${vm.name}` }),
+          h('div', { className: 'app-card-resource' }, h('span', { text: 'RAM observada' }), h('strong', { text: bytes(service.memoryBytes) })),
+          h('div', { className: 'app-card-actions' }, url ? h('a', { href: url, target: '_blank', rel: 'noopener noreferrer', className: 'button small app-open', 'aria-label': `Abrir ${service.label}` }, 'Abrir', h('span', { 'aria-hidden': true, text: '↗' })) : h('span', { className: 'cell-sub', text: 'Sem endereço publicado' }), button('Gerenciar', () => loadVm(vm.vmid, true, 'services'), 'button small quiet')));
+      });
+      return h('section', { className: 'catalog-group', 'aria-label': `Serviços de ${vm.name}` }, h('div', { className: 'catalog-group-heading' }, h('strong', { text: vm.name }), h('span', { className: 'cell-sub', text: `VM ${vm.vmid} · ${date(data?.collectedAt)}` })), result?.error ? empty('Serviços indisponíveis', result.error) : cards.length ? h('div', { className: 'app-grid' }, cards) : empty(state.catalogState === 'idle' ? 'Aguardando leitura dos serviços' : 'Nenhum serviço observado', data?.sourceState === 'stopped' ? 'A VM foi desligada desde a última leitura.' : 'A coleta não confirmou serviços nesta VM.'));
+    });
+    const allCards = groups.flatMap(group => [...group.querySelectorAll('.app-card')]).sort((a, b) => Number(!!b.querySelector('a')) - Number(!!a.querySelector('a')));
+    const hypervisor = list(state.overview?.consoleLinks).find(link => /^proxmox$/i.test(link.label) && safeConsoleUrl(link.url));
+    if (hypervisor) {
+      const nodes = list(state.overview?.nodes);
+      const online = state.overview?.sourceState === 'fresh' && nodes.length > 0 && nodes.every(node => node.status === 'online');
+      allCards.unshift(h('article', { className: 'app-card hypervisor-card' },
+        h('div', { className: 'app-card-top' }, h('span', { className: 'app-glyph', 'aria-hidden': true, text: 'PX' }), badge(online ? 'online' : 'unknown')),
+        h('h3', { text: 'Proxmox' }), h('p', { className: 'cell-sub', text: 'Hypervisor · host físico' }),
+        h('div', { className: 'app-card-resource' }, h('span', { text: 'RAM do host' }), h('strong', { text: memory(state.overview?.capacity?.usedMemoryMiB) })),
+        h('div', { className: 'app-card-actions' }, h('a', { href: safeConsoleUrl(hypervisor.url), target: '_blank', rel: 'noopener noreferrer', className: 'button small app-open', 'aria-label': 'Abrir Proxmox' }, 'Abrir', h('span', { 'aria-hidden': true, text: '↗' })), h('span', { className: 'cell-sub', text: `${nodes.length} nó(s)` }))));
+    }
+    const unavailable = groups.filter(group => !group.querySelector('.app-card'));
+    const observations = [...state.catalog.values()].map(result => result.data?.collectedAt).filter(Boolean).sort();
+    target.replaceChildren(heading, allCards.length ? h('div', { className: 'app-grid' }, ...allCards) : null, ...unavailable, groups.length ? h('p', { className: 'field-help catalog-note', text: `Leitura mais antiga: ${date(observations[0])}. Links abrem os endereços publicados; Atualizar serviços consulta as VMs novamente.` }) : empty('Nenhuma VM ligada no inventário', 'As máquinas desligadas permanecem listadas abaixo.'));
+  }
+
+  async function loadStorage() {
+    const epoch = state.sessionEpoch, generation = ++storageGeneration;
+    replace('storage-content', loading());
+    try {
+      const { data } = await api.request('/storage');
+      if (!state.session || epoch !== state.sessionEpoch || generation !== storageGeneration || state.view !== 'storage') return;
+      state.storage = data;
+      const disks = list(data.disks), sources = list(data.sources);
+      const physicalCapacity = disks.length && disks.every(disk => finite(disk.capacityBytes)) ? disks.reduce((total, disk) => total + disk.capacityBytes, 0) : null;
+      const sourceRows = sources.map(source => h('div', { className: 'source-chip' }, h('strong', { text: source.scope === 'core' ? 'Core' : 'Proxmox' }), badge(source.state), h('span', { className: 'cell-sub', text: date(source.collectedAt) })));
+      const cards = disks.map(disk => {
+        const mounts = list(disk.mounts), health = { passed: ['healthy', 'Passou'], failed: ['failed', 'Falhou'], unknown: ['unknown', 'Desconhecida'] }[disk.health] || ['unknown', 'Desconhecida'];
+        const card = h('article', { className: 'disk-card panel' },
+          h('div', { className: 'panel-header' }, h('div', {}, h('p', { className: 'eyebrow', text: `${disk.scope === 'core' ? 'CORE' : 'PROXMOX'} · ${disk.device}` }), h('h2', { text: disk.model || 'Modelo não informado' })), h('strong', { className: 'disk-capacity', text: bytes(disk.capacityBytes) })),
+          h('div', { className: 'panel-body' }, h('dl', { className: 'facts disk-facts' },
+            h('div', {}, h('dt', { text: 'Responsável' }), h('dd', { text: disk.owner?.startsWith('vm-') ? `VM ${disk.owner.slice(3)}` : disk.owner === 'host' ? 'Host Proxmox' : 'Sem dados' })),
+            h('div', {}, h('dt', { text: 'Tipo' }), h('dd', { text: ['hdd', 'ssd', 'nvme'].includes(disk.kind) ? disk.kind.toUpperCase() : 'Desconhecido' })),
+            h('div', {}, h('dt', { text: 'Saúde física' }), h('dd', {}, badge(...health))),
+            h('div', {}, h('dt', { text: 'Mount observado' }), h('dd', { text: disk.mounted === true ? 'Sim' : disk.mounted === false ? 'Não' : 'Sem dados' })),
+            h('div', {}, h('dt', { text: 'Modo do dispositivo' }), h('dd', { text: disk.readOnly === true ? 'Somente leitura' : disk.readOnly === false ? 'Leitura e escrita' : 'Sem dados' }))),
+          disk.health !== 'passed' && disk.health !== 'failed' ? h('p', { className: 'field-help', text: 'SMART não disponível nesta coleta. Discos em repouso não são acordados para obter essa leitura.' }) : null,
+          mounts.length ? mounts.map(mount => h('div', { className: 'mount-row' }, h('div', { className: 'mount-heading' }, h('strong', { className: 'mono', text: mount.path }), badge('neutral', mount.readOnly === true ? 'Somente leitura' : mount.readOnly === false ? 'Leitura e escrita' : 'Modo desconhecido')), h('p', { className: 'cell-sub', text: `${mount.filesystem || 'Filesystem não informado'} · ${mount.device || 'Dispositivo desconhecido'}` }), h('div', { className: 'mount-space' }, h('span', { text: `${bytes(mount.usedBytes)} usados` }), h('strong', { text: `${bytes(mount.availableBytes)} disponíveis` })), finite(mount.sizeBytes) && mount.sizeBytes > 0 && finite(mount.usedBytes) ? h('progress', { className: 'meter', max: 100, value: Math.min(100, 100 * mount.usedBytes / mount.sizeBytes), 'aria-label': `Ocupação de ${mount.path}` }) : null)) : h('p', { className: 'field-help', text: 'Espaço de filesystem não coletado para este dispositivo.' }),
+          list(disk.partitions).length ? h('details', { className: 'partition-details' }, h('summary', { text: `${disk.partitions.length} partição(ões) observada(s)` }), h('ul', { className: 'plain-list' }, disk.partitions.map(part => h('li', { text: `${part.device} · ${bytes(part.capacityBytes)} · ${part.filesystem || 'Tipo não informado'}${part.mounted === true ? ' · montada' : ''}` })))) : null));
+        return card;
+      });
+      replace('storage-content', h('div', { className: 'storage-summary' }, metric('Discos físicos observados', String(disks.length), 'Uma linha por dispositivo, sem somar partições'), metric('Capacidade física observada', bytes(physicalCapacity), 'Não é espaço livre para novos dados'), h('div', { className: 'storage-sources' }, ...sourceRows)), data.sourceState !== 'fresh' ? h('p', { className: 'notice', text: 'Inventário parcial ou indisponível. As fontes sem leitura atual não permitem confirmar todos os discos.' }) : null, h('p', { className: 'reading-note', text: 'Mount presente não comprova saúde física. Espaço do NFS pertence ao filesystem no core e não é contado novamente como disco físico.' }), cards.length ? h('div', { className: 'disk-grid' }, ...cards) : empty('Nenhum disco com leitura disponível', 'A ausência de dados não significa ausência de dispositivos.'));
+    } catch (error) {
+      if (state.session && epoch === state.sessionEpoch && generation === storageGeneration) { state.storage = null; replace('storage-content', empty('Inventário de discos indisponível', errorText(error))); }
+    }
+  }
+
+  async function loadServices(content, vm) {
+    const epoch = state.sessionEpoch;
+    content.replaceChildren(loading());
+    const current = () => state.session && epoch === state.sessionEpoch && state.vm?.vmid === vm.vmid && state.detailTab === 'services' && content.isConnected;
+    try {
+      const { data } = await api.request(`/vms/${vm.vmid}/services`);
+      if (!current()) return;
+      if (data.sourceState === 'stopped') { content.replaceChildren(empty('Máquina desligada', 'Nenhum processo em execução. Inicie a VM pelas ações de energia para consultar os serviços.')); return; }
+      const services = list(data.items), ram = data.memory || {};
+      const used = finite(ram.totalBytes) && finite(ram.availableBytes) && ram.totalBytes >= ram.availableBytes ? ram.totalBytes - ram.availableBytes : null;
+      const heading = h('div', { className: 'section-heading service-heading' }, h('div', {}, h('h2', { text: 'Serviços da máquina' }), h('p', { className: 'cell-sub', text: `Leitura: ${date(data.collectedAt)}` })), h('div', { className: 'actions' }, badge(data.sourceState), button('Atualizar serviços', () => loadServices(content, vm), 'button small quiet')));
+      const metrics = h('div', { className: 'metrics service-metrics' }, metric('RAM usada · dentro da VM', bytes(used), 'Total menos MemAvailable'), metric('RAM disponível · dentro da VM', bytes(ram.availableBytes), 'Inclui memória recuperável pelo Linux'), metric('RAM total · dentro da VM', bytes(ram.totalBytes), 'Não somar à memória do host'));
+      const rows = services.map(service => {
+        const controls = ['start', 'stop', 'restart'].filter(action => serviceActionAllowed(service, action, data.sourceState)).map(action => {
+          const control = button({ start: 'Iniciar', stop: 'Parar', restart: 'Reiniciar' }[action], () => serviceAction(vm, service, action, data.sourceState), 'button small quiet');
+          control.setAttribute('aria-label', `${control.textContent} ${service.label}`); return control;
+        });
+        return h('tr', {}, h('td', {}, h('strong', { text: service.label }), h('span', { className: 'cell-sub', text: service.project || 'Projeto não informado' })), h('td', {}, badge(service.state, { running: 'Em execução', exited: 'Parado', stopped: 'Parado', paused: 'Pausado', restarting: 'Reiniciando', created: 'Preparado (parado)' }[service.state] || 'Desconhecido'), h('span', { className: 'cell-sub', text: ({ healthy: 'Healthcheck OK', unhealthy: 'Healthcheck falhou', starting: 'Healthcheck iniciando', none: 'Sem healthcheck', unknown: 'Healthcheck desconhecido' })[service.health] || 'Sem evidência de healthcheck' })), h('td', { text: bytes(service.memoryBytes) }), h('td', {}, h('div', { className: 'service-actions' }, ...controls), service.reason ? h('p', { className: 'field-help', text: service.reason }) : controls.length ? null : h('span', { className: 'cell-sub', text: 'Sem ações autorizadas' })));
+      });
+      content.replaceChildren(heading, metrics, h('p', { className: 'reading-note', text: 'Ações operam somente o serviço escolhido. Guard e manutenção continuam sendo avaliados; processo ativo não comprova reprodução ou liberação de automação.' }), ...(data.sourceState === 'fresh' ? [] : [h('p', { className: 'notice', text: 'Leitura de serviços não está atualizada. Ações indisponíveis até uma nova coleta.' })]), rows.length ? table(['Serviço / projeto', 'Estado observado', 'RAM do serviço', 'Ações autorizadas'], rows) : empty('Nenhum serviço observado', 'Esta leitura não confirmou serviços gerenciados nesta VM.'));
+    } catch (error) { if (current()) content.replaceChildren(empty('Serviços indisponíveis', errorText(error)), button('Tentar nova leitura', () => loadServices(content, vm), 'button quiet')); }
+  }
+
+  function serviceAction(vm, service, action, sourceState) {
+    if (!serviceActionAllowed(service, action, sourceState)) return;
+    const label = { start: 'Iniciar', stop: 'Parar', restart: 'Reiniciar' }[action];
+    const body = openDialog(`${label} · ${service.label}`, `SERVIÇO · VM ${vm.vmid}`); if (!body) return;
+    const form = h('form', {}, h('p', { text: `${label} o serviço ${service.label} em ${vm.name}. O servidor confere novamente o estado e as permissões antes de executar.` }), h('div', { className: 'form-actions' }, cancelButton(), h('button', { type: 'submit', className: action === 'stop' ? 'button danger' : 'button primary', text: `${label} serviço` })));
+    form.addEventListener('submit', async event => { event.preventDefault(); await submitForm(form, 'POST', `/vms/${vm.vmid}/services/${encodeURIComponent(service.id)}/actions`, { action, revision: service.revision }, `${label} · ${service.label} · ${vm.name}`, true); });
+    body.append(form);
   }
 
   function field(label, name, { type = 'text', value = '', min, max, required = true, options, help, disabled = false } = {}) {

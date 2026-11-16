@@ -1,5 +1,33 @@
 # Homelab Platform — guia do agente
 
+## Atualização operacional — Órbita, 16/11/2026
+
+O proprietário mantém a conta Proxmox no portal. Os administradores dos oito
+aplicativos foram padronizados pela solicitação privada; não alterar usuários
+comuns Jellyfin, contas SSH ou senhas Proxmox. A documentação de acesso e os
+recibos de autenticação ficam fora do Git. Os processos nativos do core citados
+abaixo executam dentro dos containers `homeserver-core-active`; a API de mídia
+permanece parada e gateway/worker continuam em manutenção.
+
+O portal Órbita usa o QGA existente para listar/controlar serviços de um catálogo
+root-owned, preservando guards de storage e auditoria/idempotência. O browser
+nunca envia comandos shell. Disco físico, storage Proxmox e filesystem são
+conceitos separados: quatro discos pertencem ao host e o de 18 TB ao core.
+Não cadastrar as origens preservadas como novos datastores nem alterar mounts
+para fazê-las aparecer no painel. Consulte os runbooks de console operacional e
+inventário físico antes de mudar esses fluxos.
+
+Exceção de acesso autorizada posteriormente: Jellyfin também atende a LAN em
+`http://192.168.1.20:8096`, sem exigir `/jellyfin` no cliente. O proprietário
+confirmou login e reprodução na TV. Esse encaminhamento é restrito à LAN;
+não restaurar publicação WAN ou ligar a edge por causa dele. Os nomes HTTPS
+privados continuam pelo Tailscale. Relatos anteriores abaixo são históricos
+quando divergem desta atualização ou do estado de implementação.
+
+O Seerr usa `https://overseer.greis.dev.br/`, décimo nome privado, com a
+grafia solicitada pelo proprietário e autenticação vinculada ao Jellyfin.
+O include é aditivo; preserve o listener LAN e os demais vhosts ao atualizá-lo.
+
 Este repositório é a fonte da arquitetura geral, contratos de integração e
 configuração da infraestrutura compartilhada. Aplicações vivem em repositórios
 próprios; o catálogo aponta para commits imutáveis e distingue proposta de execução.

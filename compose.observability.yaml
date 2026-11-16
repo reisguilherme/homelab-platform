@@ -61,6 +61,8 @@ services:
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
       GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
       GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      # The provisioned datasource is Prometheus. Do not start unused backend processes.
+      GF_PLUGINS_DISABLE_PLUGINS: cloudwatch,elasticsearch,grafana-postgresql-datasource,grafana-pyroscope-datasource,influxdb,jaeger,loki,mssql,mysql,opentsdb,stackdriver,tempo,zipkin
       GF_LOG_MODE: console
       GF_SERVER_ROOT_URL: ${HOMELAB_GRAFANA_ROOT_URL:-https://127.0.0.1:18443/grafana/}
       GF_SERVER_SERVE_FROM_SUB_PATH: ${HOMELAB_GRAFANA_SERVE_FROM_SUB_PATH:-true}

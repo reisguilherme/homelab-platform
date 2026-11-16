@@ -197,6 +197,9 @@ server {
     location = /radarr { return 308 https://radarr.greis.dev.br/radarr/; }
     location /radarr/ {
         proxy_pass http://@@CORE_IP@@:7878;
+        # Radarr's HTTP origin can ignore forwarded proto; keep this fixed host HTTPS.
+        proxy_redirect http://radarr.greis.dev.br/ https://radarr.greis.dev.br/;
+        proxy_cookie_flags RadarrAuth secure httponly samesite=lax;
     }
     location / { return 404; }
 }
