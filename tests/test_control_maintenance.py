@@ -3,6 +3,7 @@
 import asyncio
 import sqlite3
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from threading import Event
 
@@ -12,6 +13,7 @@ from fastapi.testclient import TestClient
 from test_control_api import DIGEST, ORIGIN, PVE
 
 import services.control.app as control_app
+import services.control.audit as audit_module
 from services.control.audit import OperationStore
 from services.control.auth import COOKIE
 from services.control.models import ControlError, Settings
@@ -203,10 +205,13 @@ def test_authenticated_summary_has_only_sanitized_statistics_and_limits(tmp_path
         summary = response.json()
         assert summary["retentionDays"] == 90
         assert summary["intervalSeconds"] == 3600 and summary["batchSize"] == 500
+        assert summary["lockTimeoutSeconds"] == 5 and summary["sqlBudgetSeconds"] == 2
         assert set(summary) == {
             "retentionDays",
             "intervalSeconds",
             "batchSize",
+            "lockTimeoutSeconds",
+            "sqlBudgetSeconds",
             "lastAttemptAt",
             "lastSuccessAt",
             "lastOutcome",
@@ -300,10 +305,123 @@ def test_shutdown_waits_for_running_transaction_to_finish(tmp_path, store):
             shutdown = asyncio.create_task(lifespan.__aexit__(None, None, None))
             await asyncio.sleep(0.02)
             assert not shutdown.done()
+            shutdown.cancel()
+            await asyncio.sleep(0.02)
+            assert not shutdown.done()
         finally:
             release.set()
         await shutdown
-        assert store.db.execute("SELECT count(*) FROM events").fetchone()[0] == 0
+        assert store.db.execute("SELECT count(*) FROM events").fetchone()[0] == 2
         assert not store.db.in_transaction
+
+    asyncio.run(scenario())
+
+
+def test_maintenance_lock_wait_has_budget_without_changing_journal(store, monkeypatch):
+    identifier = operation(store, "succeeded")
+    monkeypatch.setattr(audit_module, "MAINTENANCE_LOCK_TIMEOUT_SECONDS", 0.05, raising=False)
+    with ThreadPoolExecutor(max_workers=1) as pool, store.lock:
+        work = pool.submit(store.maintain)
+        with pytest.raises(TimeoutError, match="lock"):
+            work.result(timeout=0.5)
+        assert store.maintenance_status()["lastOutcome"] == "failed"
+    assert store.get(identifier)["state"] == "succeeded"
+    assert store.db.execute("SELECT count(*) FROM events").fetchone()[0] == 2
+    assert not store.db.in_transaction
+
+
+def test_sql_budget_interrupts_old_unresolved_scan_and_preserves_journal(store, monkeypatch):
+    identifier = operation(store, "succeeded")
+    unresolved = operation(store, "reconciling", "unresolved-budget-key")
+    with store.transaction():
+        store.db.execute(
+            "WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<10000) "
+            "INSERT INTO events(operation_id,actor,action,outcome,created) "
+            "SELECT ?, 'private-actor@pve', 'power', 'running', 1 FROM n",
+            (unresolved,),
+        )
+    before = [tuple(row) for row in store.db.execute("SELECT * FROM operations")]
+    scan_started = Event()
+    store.db.set_trace_callback(
+        lambda sql: scan_started.set() if sql.startswith("DELETE FROM events") else None
+    )
+    monkeypatch.setattr(
+        audit_module, "monotonic", lambda: 3.0 if scan_started.is_set() else 0.0, raising=False
+    )
+    with pytest.raises(sqlite3.OperationalError, match="interrupted") as error:
+        store.maintain()
+    assert error.value.sqlite_errorcode == sqlite3.SQLITE_INTERRUPT
+    assert store.db.execute("SELECT count(*) FROM events").fetchone()[0] == 10004
+    assert [tuple(row) for row in store.db.execute("SELECT * FROM operations")] == before
+    assert store.maintenance_status()["eventsDeleted"] == 0
+    assert not store.db.in_transaction
+    previous, created = store.begin(
+        "private-actor@pve", "maintenance-fixture-key", "power", 900, {"private": "value"}
+    )
+    assert previous["operationId"] == identifier and not created
+    # A leftover interrupt handler would abort this unrelated query too.
+    assert store.db.execute("SELECT sum(id) FROM events").fetchone()[0] > 0
+
+
+def test_sqlite_lock_wait_is_short_and_restores_normal_busy_timeout(store, tmp_path):
+    identifier = operation(store, "succeeded")
+    normal_timeout = store.db.execute("PRAGMA busy_timeout").fetchone()[0]
+    external = sqlite3.connect(tmp_path / "journal.sqlite", isolation_level=None)
+    external.execute("BEGIN IMMEDIATE")
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            work = pool.submit(store.maintain)
+            with pytest.raises(sqlite3.OperationalError, match="locked"):
+                work.result(timeout=0.75)
+    finally:
+        external.execute("ROLLBACK")
+        external.close()
+    assert store.db.execute("PRAGMA busy_timeout").fetchone()[0] == normal_timeout
+    assert store.db.execute("SELECT count(*) FROM events").fetchone()[0] == 2
+    assert store.get(identifier)["state"] == "succeeded"
+    assert not store.db.in_transaction
+
+
+def test_lifecycle_cancellation_interrupts_sql_and_drains_rollback(tmp_path, store):
+    identifier = operation(store, "succeeded")
+    unresolved = operation(store, "accepted", "unresolved-shutdown-key")
+    started = Event()
+    store.db.create_function("mark_started", 0, lambda: started.set() or 0)
+    store.db.executescript("""
+        CREATE TRIGGER expensive_cleanup BEFORE DELETE ON events
+        BEGIN
+            SELECT mark_started();
+            SELECT sum(x) FROM (
+                WITH RECURSIVE n(x) AS (
+                    VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<100000000
+                ) SELECT x FROM n
+            );
+        END;
+    """)
+    app = control_app.create_app(settings(tmp_path), proxmox=object(), audit=store)
+
+    async def scenario():
+        lifespan = app.router.lifespan_context(app)
+        await lifespan.__aenter__()
+        assert await asyncio.to_thread(started.wait, 5)
+        shutdown = asyncio.create_task(lifespan.__aexit__(None, None, None))
+        try:
+            done, _ = await asyncio.wait({shutdown}, timeout=0.75)
+            assert shutdown in done, "shutdown did not cooperatively interrupt SQLite"
+            await shutdown
+        finally:
+            # RED-run cleanup only: never release the worker before asserting completion.
+            if not shutdown.done():
+                store.db.interrupt()
+                await shutdown
+        assert not store.db.in_transaction
+        assert store.db.execute("SELECT count(*) FROM events").fetchone()[0] == 3
+        assert store.get(unresolved)["state"] == "accepted"
+        previous, created = store.begin(
+            "private-actor@pve", "maintenance-fixture-key", "power", 900, {"private": "value"}
+        )
+        assert previous["operationId"] == identifier and not created
+        assert store.lock.acquire(timeout=0.1)
+        store.lock.release()
 
     asyncio.run(scenario())

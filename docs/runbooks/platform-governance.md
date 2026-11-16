@@ -84,8 +84,9 @@ na VM. Acompanhar espaço, sem confundir histórico local com backup.
 O código usa o mesmo `OperationStore`, conexão, lock e transação da API.
 O único processo/worker inicia um lote na abertura da aplicação e espera
 3.600 segundos após cada tentativa para o próximo. Não há serviço ou
-agendador adicional no host. No encerramento, a tarefa periódica é cancelada;
-se um lote já começou, a API espera sua transação terminar antes de sair.
+agendador adicional no host. No encerramento, a tarefa periódica sinaliza
+cancelamento ao worker e espera sua transação terminar ou reverter antes de
+sair, inclusive se receber outro pedido de cancelamento enquanto espera.
 
 - `CONTROL_AUDIT_RETENTION_DAYS` define a idade dos eventos, com default de
   **90 dias** e valores inteiros de **1 a 3.650 dias**. Configuração fora dos
@@ -98,16 +99,34 @@ se um lote já começou, a API espera sua transação terminar antes de sair.
   elegíveis, depois prévias de exclusão expiradas usando o saldo do lote.
   Prévias ainda válidas continuam utilizáveis; não há limpeza ilimitada no
   caminho de criação de prévias. Um acúmulo exige vários ciclos para escoar.
+- Os orçamentos técnicos fixos são **5 segundos para adquirir o lock do store**
+  e **2 segundos para executar SQL**, usando relógio monotônico. A espera pelo
+  lock consulta cancelamento a cada até 50 ms; o SQLite consulta orçamento e
+  cancelamento a cada 1.000 instruções. Durante o lote, a espera interna por
+  lock SQLite fica em 100 ms; o timeout normal é restaurado depois. O limite de
+  500 linhas sozinho não limita o custo de procurar eventos em acervo antigo
+  de operações não resolvidas, por isso o orçamento SQL também abrange scans.
 - Falha reverte o lote inteiro, registra aviso sem detalhes privados e deixa
   a próxima tentativa para o intervalo normal. Nenhuma falha dispensa o commit
-  durável de uma intenção antes de mutação no Proxmox.
+  durável de uma intenção antes de mutação no Proxmox. Orçamento esgotado ou
+  cancelamento também registra `failed` após a interrupção/rollback, com zero
+  linhas removidas; a proteção de interrupção é retirada antes de reverter.
 
 `GET /api/v1/audit/maintenance` exige sessão autenticada e retorna somente
-limites, resultado/horários da última tentativa, horário do último sucesso,
+limites (incluindo `lockTimeoutSeconds` e `sqlBudgetSeconds`), resultado/horários
+da última tentativa, horário do último sucesso,
 quantidades removidas nessa tentativa e número de falhas no processo.
 Não contém atores, parâmetros, chaves ou mensagens SQLite. Esses dados ficam
 em memória e reiniciam com a API; `not_run` indica que ainda não houve execução.
 O endpoint é de leitura, sem comando manual de poda.
+
+Esses orçamentos limitam espera normal de locks e execução cooperativa de
+instruções SQLite; não são garantia absoluta de duração do encerramento.
+Uma thread presa em I/O de filesystem no kernel, inclusive estado `D`, não
+pode ser terminada com segurança pelo cancelamento Python. Nesse caso a API
+continua esperando a transação, sem abandonar o writer nem declarar a poda
+cancelada com escrita ainda pendente. A contenção física continua pertencendo
+à plataforma; este mecanismo não comprova recuperação do storage.
 
 Não há `VACUUM` automático, exclusão de operações nem limite rígido para o
 tamanho do banco. As páginas liberadas podem ser reutilizadas pelo SQLite,

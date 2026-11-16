@@ -9,10 +9,14 @@ import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
+from time import monotonic
 
 from .models import require, utc, validate_audit_retention
 
 MAINTENANCE_BATCH_SIZE = 500
+MAINTENANCE_LOCK_TIMEOUT_SECONDS = 5
+MAINTENANCE_SQL_BUDGET_SECONDS = 2
+MAINTENANCE_BUSY_TIMEOUT_MS = 100
 
 
 def fingerprint(value):
@@ -25,6 +29,7 @@ class OperationStore:
     def __init__(self, path, clock=time.time):
         self.clock = clock
         self.lock = threading.RLock()
+        self._maintenance_lock = threading.Lock()
         self._maintenance = {
             "lastAttemptAt": None,
             "lastSuccessAt": None,
@@ -65,24 +70,72 @@ class OperationStore:
             )
 
     @contextmanager
-    def transaction(self):
+    def transaction(self, *, progress=None):
         with self.lock:
-            self.db.execute("BEGIN IMMEDIATE")
+            if progress is not None:
+                self.db.set_progress_handler(progress, 1000)
             try:
-                yield
-                self.db.execute("COMMIT")
-            except BaseException:
-                self.db.execute("ROLLBACK")
-                raise
+                self.db.execute("BEGIN IMMEDIATE")
+                try:
+                    yield
+                    self.db.execute("COMMIT")
+                except BaseException:
+                    # Rollback must not be interrupted by the maintenance deadline.
+                    if progress is not None:
+                        self.db.set_progress_handler(None, 0)
+                    # SQLITE_INTERRUPT may already have rolled back the transaction.
+                    if self.db.in_transaction:
+                        self.db.execute("ROLLBACK")
+                    raise
+            finally:
+                if progress is not None:
+                    self.db.set_progress_handler(None, 0)
 
-    def maintain(self, retention_days=90):
+    def maintain(self, retention_days=90, *, cancel=None):
         """Prune one bounded batch without releasing operations or idempotency keys."""
         validate_audit_retention(retention_days)
-        with self.lock:
-            now = self.clock()
+        now = self.clock()
+        with self._maintenance_lock:
             self._maintenance.update(lastAttemptAt=utc(now), eventsDeleted=0, intentsDeleted=0)
+        try:
+            events, intents = self._prune(retention_days, now, cancel)
+        except Exception:
+            with self._maintenance_lock:
+                self._maintenance["lastOutcome"] = "failed"
+                self._maintenance["failures"] += 1
+            raise
+        with self._maintenance_lock:
+            self._maintenance.update(
+                lastOutcome="succeeded",
+                lastSuccessAt=utc(self.clock()),
+                eventsDeleted=events,
+                intentsDeleted=intents,
+            )
+            return dict(self._maintenance)
+
+    def _prune(self, retention_days, now, cancel):
+        lock_deadline = monotonic() + MAINTENANCE_LOCK_TIMEOUT_SECONDS
+        while True:
+            if cancel is not None and cancel.is_set():
+                raise InterruptedError("journal maintenance cancelled")
+            remaining = lock_deadline - monotonic()
+            if remaining <= 0:
+                raise TimeoutError("journal maintenance lock budget exceeded")
+            if self.lock.acquire(timeout=min(0.05, remaining)):
+                break
+        try:
+            sql_deadline = monotonic() + MAINTENANCE_SQL_BUDGET_SECONDS
+
+            def interrupted():
+                return (cancel is not None and cancel.is_set()) or monotonic() >= sql_deadline
+
+            busy_timeout = self.db.execute("PRAGMA busy_timeout").fetchone()[0]
             try:
-                with self.transaction():
+                # A busy handler does not invoke the SQLite progress callback.
+                self.db.execute(f"PRAGMA busy_timeout={MAINTENANCE_BUSY_TIMEOUT_MS}")
+                with self.transaction(progress=interrupted):
+                    if interrupted():
+                        raise InterruptedError("journal maintenance stopped")
                     events = self.db.execute(
                         "DELETE FROM events WHERE id IN ("
                         "SELECT e.id FROM events e JOIN operations o ON o.id=e.operation_id "
@@ -95,21 +148,18 @@ class OperationStore:
                         "SELECT id FROM intents WHERE expires<=? ORDER BY expires,id LIMIT ?)",
                         (now, MAINTENANCE_BATCH_SIZE - events),
                     ).rowcount
-            except Exception:
-                self._maintenance["lastOutcome"] = "failed"
-                self._maintenance["failures"] += 1
-                raise
-            self._maintenance.update(
-                lastOutcome="succeeded",
-                lastSuccessAt=utc(self.clock()),
-                eventsDeleted=events,
-                intentsDeleted=intents,
-            )
-            return self.maintenance_status()
+                    # Small statements may finish before the next progress callback.
+                    if interrupted():
+                        raise InterruptedError("journal maintenance stopped")
+                return events, intents
+            finally:
+                self.db.execute(f"PRAGMA busy_timeout={busy_timeout}")
+        finally:
+            self.lock.release()
 
     def maintenance_status(self):
         """Process-local counters only: no actors, keys, parameters or database errors."""
-        with self.lock:
+        with self._maintenance_lock:
             return dict(self._maintenance)
 
     def existing(self, actor, key, action, target, parameters):

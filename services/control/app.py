@@ -5,6 +5,7 @@ import logging
 import os
 import secrets
 import sqlite3
+import threading
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
@@ -13,7 +14,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .audit import MAINTENANCE_BATCH_SIZE, OperationStore
+from .audit import (
+    MAINTENANCE_BATCH_SIZE,
+    MAINTENANCE_LOCK_TIMEOUT_SECONDS,
+    MAINTENANCE_SQL_BUDGET_SECONDS,
+    OperationStore,
+)
 from .auth import COOKIE, SessionStore, check_csrf, check_origin
 from .models import (
     Acl,
@@ -35,15 +41,25 @@ logger = logging.getLogger(__name__)
 
 
 async def maintain_journal(store, retention_days):
+    stop = threading.Event()
     while True:
-        work = asyncio.create_task(asyncio.to_thread(store.maintain, retention_days))
+        work = asyncio.create_task(asyncio.to_thread(store.maintain, retention_days, cancel=stop))
         try:
             # Cancellation must drain a running transaction before lifespan exits.
             try:
                 await asyncio.shield(work)
             except asyncio.CancelledError:
+                stop.set()
+                # A second cancellation must not detach a still-running SQLite writer.
+                while not work.done():
+                    try:
+                        await asyncio.shield(work)
+                    except asyncio.CancelledError:
+                        continue
+                    except Exception:
+                        break
                 with suppress(Exception):
-                    await work
+                    work.result()
                 raise
         except Exception:
             logger.warning("Journal maintenance failed; retrying at the next interval.")
@@ -250,6 +266,8 @@ def create_app(settings, proxmox=None, audit=None):
             "retentionDays": settings.audit_retention_days,
             "intervalSeconds": MAINTENANCE_INTERVAL_SECONDS,
             "batchSize": MAINTENANCE_BATCH_SIZE,
+            "lockTimeoutSeconds": MAINTENANCE_LOCK_TIMEOUT_SECONDS,
+            "sqlBudgetSeconds": MAINTENANCE_SQL_BUDGET_SECONDS,
             **store.maintenance_status(),
         }
 
