@@ -1,5 +1,22 @@
 # Prioridades operacionais em 16/11/2026
 
+**Avanço no mesmo dia:** 8.209 caminhos/6.023 arquivos únicos (5,449 TB) foram
+publicados no HD de 18 TB; os dois aliases degradados ficam excluídos e as
+origens preservadas. Oito processos nativos do core estão vivos; API, gateway
+e worker estão em manutenção, sem readmissão das automações. Os 734 torrents
+permanecem parados, um em `missingFiles`.
+Backend edge, isolamento e 33 checks do proxy foram aceitos. DNAT TCP 80/443
+foi aplicado; a publicação segue em ativação, sem certificado TLS após timeouts
+externos do ACME e no teste 4G. O proprietário confirmou WAN/mapeamentos ativos;
+a captura corrigida validou LAN/loopback e cobriu a tentativa 4G relatada, sem
+origem externa distinta atribuível a ela. O vínculo WAN foi confirmado; o teste
+temporário WAN 10443 → LAN 443 foi orientado, ainda não aplicado nem confirmado.
+SNAT possível impede concluir a causa. PVE/edge sem mudança adicional e
+disponibilidade pública pendente.
+Os gatilhos Jellyfin seguem contidos. O [estado atual](../implementation-status.md)
+detalha as provas; a sequência abaixo registra a prioridade e o planejamento
+anteriores, não afirma que todas as etapas ainda estejam por começar.
+
 O proprietário definiu como prioridade **concluir o mediaserver-core e reunir
 toda a mídia no HD de 18 TB**. Melhorias visuais do painel, inventário físico,
 controle de serviços dentro das VMs, memória e domínios continuam no escopo de

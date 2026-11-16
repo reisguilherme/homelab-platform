@@ -1,5 +1,18 @@
 # Homelab Platform
 
+**Atualização de 16/11/2026:** oito processos nativos do core estão vivos;
+API, gateway e worker iniciados em manutenção, sem readmitir automações. Os 734
+torrents continuam parados, um em `missingFiles`. A publicação integrou 8.209 caminhos de 6.023
+arquivos únicos (5,449 TB); dois aliases degradados permanecem excluídos, com
+origens preservadas e scans Jellyfin contidos. Backend edge → playback e
+isolamento PVE passaram nos checks reais. DNAT TCP 80/443 aplicado, HTTP 308
+para HTTPS conferido pela LAN e 33 checks do proxy aprovados. **Publicação em
+ativação, ainda sem certificado TLS.** ACME e teste 4G deram timeout externo,
+apesar do redirect LAN funcionar; a causa ainda não foi determinada.
+Não declarar o serviço disponível nem liberar portas adicionais.
+O [estado canônico](docs/implementation-status.md) detalha o alcance; a narrativa
+abaixo conserva as etapas anteriores.
+
 Infraestrutura compartilhada do homelab: API e portal de governança, arquitetura,
 contratos de integração, catálogo de projetos e observabilidade. Este repositório concentra as decisões
 de compute, redes, armazenamento, acessos e energia. As aplicações mantêm seus
@@ -39,8 +52,9 @@ foram aceitos. O coletor de playback agora distingue saúde Jellyfin, admissão 
 storage e frescor; seu alerta de coleta obsoleta disparou e resolveu em ensaio.
 A correção da tampa passou no teste físico de 30 segundos. O retorno USB foi
 assistido; recuperação automática continua pendente. Os três discos de origem
-estão em inspeção RO sem replay do journal. Docker foi instalado no core, ainda
-sem aplicações readmitidas. A prioridade é [core e consolidação](docs/architecture/operational-priorities-2026-11-16.md).
+estão em inspeção RO sem replay do journal. A restauração inicial do core ocorreu
+com os aplicativos parados; a ativação parcial está no resumo atual acima.
+A prioridade é [core e consolidação](docs/architecture/operational-priorities-2026-11-16.md).
 K3s é futuro. O [estado canônico](docs/implementation-status.md#continuidade-operacional-de-1611)
 registra o alcance das provas e os limites de operação.
 O [gerador de bootstrap](scripts/proxmox_bootstrap.py) produz um bundle offline,
@@ -73,7 +87,7 @@ flowchart TB
 | [Responsabilidade dos repositórios](docs/repositories.md) | Plataforma, consumidores, versões e autoridade operacional |
 | [Contrato de integração](docs/integration-contract.md) | Recursos, rede, storage, telemetria, segredos e recuperação |
 | [Observabilidade](docs/observability.md) | Grafana/Prometheus, alvos opt-in, diretórios e limites |
-| [Domínios greis.dev.br](docs/architecture/access-domains.md) | Streaming público e administração privada; desenho ainda sem DNS/TLS aplicados |
+| [Domínios greis.dev.br](docs/architecture/access-domains.md) | Backend edge/proxy aceitos e DNAT aplicado; certificado TLS ainda ausente |
 | [Prioridades atuais](docs/architecture/operational-priorities-2026-11-16.md) | Core/acervo primeiro; discos, controles por serviço, UI e RAM registrados |
 | [Estado da implementação](docs/implementation-status.md) | O que existe no código e o que falta comprovar no servidor |
 | [Proxmox](infrastructure/proxmox/README.md) | Host, convidados e limites atuais de rede |

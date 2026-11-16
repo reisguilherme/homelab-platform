@@ -1,5 +1,17 @@
 # VMs Ubuntu e rede privada no Proxmox
 
+**Atualização em 16/11/2026:** backend edge → playback:8096 ativo (HTTP 200),
+com firewall PVE `enabled/running`, DROP IN/OUT e chains das NICs conferidos.
+Edge → core:8080, controle:443 e PVE:8006/22 deram timeout. Duas regras DNAT
+TCP 80/443 foram aplicadas sem reload; HTTP 308 para HTTPS correto passou pela
+LAN. A publicação está em ativação, sem certificado TLS após timeouts externos
+do ACME e no 4G, com causa ainda não determinada. Não ampliar portas ou relaxar
+o firewall para contornar o diagnóstico. O core já tem
+oito processos nativos vivos; API, gateway e
+worker estão em manutenção, sem readmissão das automações. A tabela de rede
+abaixo preserva o aceite do bootstrap, anterior à exceção de backend; consulte
+o [estado atual](../implementation-status.md).
+
 Este roteiro registra a etapa posterior à [entrega do host](../implementation-status.md#host-proxmox-entregue).
 As três VMs de mídia foram entregues com sistema e acesso administrativo
 verificados. No bootstrap abaixo, ainda não havia Docker ou aplicações.
@@ -8,10 +20,11 @@ foi aceito privadamente na playback. A etapa de governança criou uma quarta
 VM, `homelab-control`, e reduziu o core de 6 para 4 GiB após medição, mantendo
 11 GiB totais de guests. Base, nginx TLS, API/portal, Prometheus e Grafana estão
 operantes; os ensaios reais e os limites atuais estão registrados no runbook
-de governança. A manutenção periódica do journal foi implementada no código,
-mas ainda aguarda implantação e aceite na VM. Consulte
+de governança. A manutenção periódica do journal foi posteriormente implantada
+e aceita na VM, conforme o estado atual. Consulte
 [storage](storage-core-handoff.md) e [governança](platform-governance.md).
-Publicação, demais aplicações, GPU e recuperação USB permanecem pendentes.
+Entrada pública, readmissão da automação, GPU e recuperação USB automática
+permanecem pendentes.
 
 ## Identidade no Proxmox e renomeação
 
@@ -122,7 +135,7 @@ As 21 provas TCP passaram: duas permitidas e 19 negadas.
 | Core → playback:8096 | Permitido | Listener temporário; Jellyfin não está instalado |
 | Playback → core:2049 | Permitido | Listener temporário; não prova NFS, export ou mídia RO |
 | Playback → core:8080/22; core → playback:22 | Negado | Portas e origens examinadas |
-| Edge → core:2049/8080 e playback:8096/18096 | Negado | A entrada pública da playback continua fechada |
+| Edge → core:2049/8080 e playback:8096/18096 | Negado no bootstrap | Em 16/11, somente playback:8096 recebeu a exceção de backend; DNAT 80/443 aplicado, certificado TLS ainda ausente |
 | Todas → gateway privado:22/8006, endereço LAN do host:8006 e destino Tailscale:8096 | Negado | Não equivale a isolamento absoluto |
 | DNS e HTTPS Ubuntu nos três guests | Resolução e HTTP `200` | Conectividade de bootstrap, não readiness das aplicações |
 

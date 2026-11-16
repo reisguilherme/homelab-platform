@@ -1,6 +1,27 @@
 # Domínios e acesso ao homelab
 
-Desenho solicitado em **16/11/2026**, ainda não implantado. O proprietário possui
+**Atualização em 16/11/2026:** backend edge → playback e isolamento de rede
+comprovados; 33 checks do proxy passaram, incluindo login comum e negações admin.
+DNAT TCP 80/443 aplicado sem reload e HTTP 308 para HTTPS correto pela LAN.
+O DNS A foi confirmado, mas **ainda não há certificado TLS**: Let's Encrypt
+resolveu o destino esperado e registrou timeout TCP 80. O proprietário confirmou
+WAN e mapeamentos TCP 80/443 ativos para o PVE, com MAC correto; HTTP/HTTPS pelo
+4G deram timeout. DNS A esperado e HTTP 308 pelo domínio foram
+comprovados no Windows; NAT loopback funciona nesse desktop. HTTPS falhou no
+Schannel, ainda sem certificado. As capturas anteriores em
+`vmbr0` não validaram sequer o controle LAN e foram descartadas como evidência
+de ausência de tráfego. A captura SYN corrigida em `nic1` validou LAN e loopback
+e cobriu a tentativa 4G relatada, sem origem externa distinta atribuível a ela.
+SYN com origem aparente igual à WAN também apareceram; SNAT pode ocultar sua
+origem real. O status WAN enviado pelo proprietário confirmou a conexão IPv4
+ativa com o endereço esperado pelo DNS e o vínculo correto dos mapeamentos.
+O próximo teste orientado é WAN TCP 10443 → LAN TCP 443 do PVE, temporário e na
+mesma WAN, ainda sem confirmação de criação ou aplicação. Nenhuma mudança
+adicional foi feita no PVE/edge. Não concluir bloqueio da operadora ou falha do
+roteador. `streaming.greis.dev.br` permanece em ativação, sem anúncio de disponibilidade.
+Não se declara implantação dos nomes administrativos privados.
+
+Desenho solicitado em **16/11/2026**, em implantação parcial. O proprietário possui
 `greis.dev.br` e definiu Jellyfin público autenticado e administração pela LAN ou
 Tailscale. Este documento registra os nomes e as fronteiras; não aplica DNS,
 certificados, proxy, ACLs ou regras de roteador. A prioridade continua sendo
@@ -40,7 +61,8 @@ flowchart LR
     PRIVATE --> PVE[Gestão Proxmox]
 ```
 
-O diagrama é uma proposta, sem regras de rede aplicadas por este trabalho. O
+O diagrama distingue o destino desejado do backend já aceito; não comprova
+publicação externa nem implantação dos nomes privados. O
 proxy público recebe somente a rota de Jellyfin. Não recebe rotas administrativas,
 credenciais Proxmox, bancos de controle ou mounts de mídia. As entradas privadas
 devem continuar acessíveis aos administradores sem depender do proxy público.
@@ -106,20 +128,21 @@ Nenhuma dessas alternativas foi aplicada. Não se pressupõe que a API do
 Registro.br permita a automação requerida; isso precisa ser conferido. Essa
 escolha não bloqueia o trabalho de mídia e core.
 
-Caddy é uma opção de proxy com emissão/renovação automáticas e suporte a DNS-01
-mediante configuração e integração compatível com o provedor. A delegação do
+Caddy já integra o proxy público da edge; emissão/renovação reais ainda aguardam
+aceite. O suporte a DNS-01 depende de configuração e integração compatível com
+o provedor. A delegação do
 desafio também pode ser usada quando o DNS original não oferece integração.
-Isso não determina uma troca do nginx privado existente; o cliente ACME, seus
-módulos e a entrega/renovação serão escolhidos na implementação. Ver
+Isso não determina uma troca do nginx privado existente; a automação DNS-01
+para os nomes privados continua por definir. Ver
 [HTTPS automático do Caddy](https://caddyserver.com/docs/automatic-https#dns-challenge).
 
 ## Evidências pendentes antes de publicar
 
 | Área | O que falta comprovar |
 |---|---|
-| WAN e provedor de internet | Endereço recebido pelo roteador, IPv4/IPv6 utilizáveis, CGNAT ou duplo NAT, filtros do provedor e caminho de entrada. Um IP observado num site não prova rota de entrada. |
-| Caminho público | Escolha e teste do transporte até a edge, com autenticação Jellyfin e capacidade para streaming; eventual provedor de túnel exige avaliação de suporte, limites e termos. |
-| DNS e TLS | Acesso autorizado à zona, estratégia de DNS-01, emissão, renovação e retorno testados; nenhum segredo em código ou documentação. |
+| WAN e provedor de internet | Vínculo WAN confirmado; teste temporário WAN 10443 → LAN 443 orientado, ainda não aplicado. SNAT possível impede atribuir conclusivamente a origem/falha da tentativa 4G. |
+| Caminho público | DNAT 80/443 e loopback HTTP funcionam no desktop examinado; faltam conectividade externa, TLS e reprodução. Não inferir acesso pela internet a partir do loopback. |
+| DNS e TLS | Emissão, renovação e retorno do certificado público testados; estratégia DNS-01 dos nomes privados ainda por definir, sem expor portas administrativas ou segredos. |
 | Acesso privado | Resolução na LAN e Tailscale, rota mínima ao resolvedor e aos serviços, políticas ACL/grants efetivas e negação a clientes sem permissão. |
 | Isolamento | Nenhuma rota pública aos seis nomes administrativos, aos opcionais privados ou às portas nativas; verificar também IPv6. |
 | Aplicações | Origem, sessões e redirecionamentos corretos; clientes Jellyfin reproduzindo por acesso externo; administração Jellyfin negada pela entrada pública; preservação de NFS RO, lease e contenção de storage. |

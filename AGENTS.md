@@ -4,6 +4,18 @@ Este repositório é a fonte da arquitetura geral, contratos de integração e
 configuração da infraestrutura compartilhada. Aplicações vivem em repositórios
 próprios; o catálogo aponta para commits imutáveis e distingue proposta de execução.
 
+Estado observado em 16/11/2026: oito processos nativos do core estão vivos
+(quatro Arr, Seerr, integration-proxy, qBittorrent e monitor); API, gateway e
+worker estão iniciados em manutenção, sem readmissão da automação. Os 734
+torrents continuam parados, um em `missingFiles`. Foram publicados 8.209 caminhos/6.023 arquivos
+únicos (5,449 TB), sem os dois aliases degradados. Origens permanecem preservadas
+e gatilhos Jellyfin contidos. Backend edge → playback:8096 e isolamento PVE
+foram comprovados; DNAT TCP 80/443 foi aplicado e 33 checks do proxy passaram.
+A publicação está em ativação, sem certificado TLS: ACME e 4G deram timeout
+externo, com causa ainda não determinada. Manter firewall e portas atuais. Consulte o
+[estado atual](docs/implementation-status.md); os relatos anteriores abaixo são
+históricos e não alteram os limites operacionais.
+
 ## Limites
 
 - Não fazer deploy, reiniciar o servidor, formatar/particionar discos ou alterar
@@ -19,7 +31,7 @@ próprios; o catálogo aponta para commits imutáveis e distingue proposta de ex
   com inspeção RO antes de RW. O passthrough do dispositivo e o NFS RO para
   playback foram aplicados, preservando o adaptador Ethernet USB e o acervo.
   Seguir o [runbook de storage](docs/runbooks/storage-core-handoff.md).
-  A rede privada tem NAT sem DNAT e filtros testados;
+  No bootstrap inicial, a rede privada tinha NAT sem DNAT e filtros testados;
   autostart ordenado, acesso e filtros persistiram após reboot. A restrição
   da gestão na LAN continua pendente.
   Confira o [estado de implementação](docs/implementation-status.md#vms-e-rede-privada).
@@ -72,8 +84,9 @@ próprios; o catálogo aponta para commits imutáveis e distingue proposta de ex
   Tampa corrigida via logind e testada fisicamente por 30 s; sem reboot do host.
   Retorno USB foi assistido, não automático. Três fontes foram autorizadas para
   inspeção block-RO e ro,noload, sem replay/reparo; preservar esse escopo.
-  Docker está instalado no core, mas nenhuma aplicação foi readmitida. Core e
-  consolidação são prioridade; domínios greis.dev.br seguem desenho sem deploy.
+  Na etapa inicial de restauração, Docker estava instalado no core sem apps
+  readmitidos. A ativação parcial posterior e o backend edge estão registrados
+  no resumo acima; core e consolidação continuam prioritários.
   A releitura integral SHA-256 do staging foi interrompida pelo proprietário em
   16/11; não retomá-la automaticamente. O critério atual é triagem de reprodução,
   com preservação das origens. Só falha de conteúdo comprovada pode fundamentar

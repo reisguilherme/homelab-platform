@@ -1,5 +1,78 @@
 # Estado da implementação
 
+## Estado atual — 16/11/2026, publicação em ativação
+
+O core mantém **oito processos nativos vivos**: Sonarr, Radarr, Prowlarr,
+Bazarr, Seerr, integration-proxy, qBittorrent e monitor. API, download gateway
+e **worker estão iniciados em manutenção**, sem readmissão da automação. A fila
+qBit conserva 734 torrents parados, um em `missingFiles`; não se declara retomada
+de downloads.
+
+O recibo do worker registra `RUNNING_IN_MAINTENANCE`. O guard real foi validado,
+com worker/collector no mesmo PGID/SID e collector UID 1000. Capacidade e
+heartbeat avançaram; o último sucesso de ingestão permaneceu inalterado.
+Memória observada: 87,3 MB nessa amostra, não um dimensionamento sob carga.
+
+A publicação integrou **8.209 caminhos de 6.023 arquivos únicos, cerca de
+5,449 TB**, ao HD de 18 TB. Dois aliases do conteúdo degradado permanecem fora
+da publicação, com origens preservadas. O delta somente de metadados encontrou
+8.209 correspondências publicadas e esses dois aliases, sem outros casos no
+escopo inspecionado; journals pendentes das origens limitam a conclusão. Não
+houve nova prova integral dos bytes. Os gatilhos de scan Jellyfin seguem contidos.
+
+O backend da edge está ativo. Firewall PVE `enabled/running`, políticas IN/OUT
+DROP e chains das NICs foram conferidos. Edge → playback:8096 respondeu HTTP
+200; core:8080, controle:443 e PVE:8006/22 deram timeout. No proxy: Items sem
+sessão retornou 401, configuração 403, Users/Public `[]`, Nginx direto 403 e
+guard indisponível 500. Hostname incorreto no Caddy retornou 200 com corpo vazio,
+sem conteúdo Jellyfin: não registrar esse caso como negação HTTP 403/444.
+
+As duas regras DNAT TCP 80/443 foram aplicadas no PVE sem reload. Pela LAN,
+HTTP retornou 308 para o HTTPS correto. O aceite do proxy passou em **33 checks**:
+login comum, identidade, catálogo de 20 itens, Range 206 de 64 KiB, WebSocket
+101, login admin 403, token admin válido 403, GETs administrativos e spoof
+negados e três logouts. Isso não comprova reprodução externa por TLS.
+
+Caddy definitivo, Nginx e guard estão Running, com rootfs RO, UID 1000 e
+capabilities ALL removidas; os limites de memória somam 448 MiB. O registro DNS
+A foi confirmado e o diretório ACME respondeu 200, inclusive a partir do Caddy.
+**Ainda não há certificado TLS.** Let's Encrypt resolveu o hostname para o
+destino esperado, mas registrou timeout na conexão externa TCP 80. O proprietário
+confirmou a WAN esperada e os mapeamentos TCP 80/443 ativos para o endereço LAN
+do PVE, com MAC correto. HTTP e HTTPS deram timeout pelo 4G. No Windows,
+o A esperado foi resolvido e o domínio respondeu HTTP 308 pelo Caddy,
+com Location HTTPS correto; o HTTP LAN com Host explícito também retornou 308.
+Isso comprova NAT loopback nesse desktop. HTTPS falhou no Schannel, ainda sem
+certificado emitido; a tentativa anterior de timeout no desktop foi superada
+pela prova HTTP mais recente.
+
+As capturas anteriores em `vmbr0` foram invalidadas: nem o controle LAN apareceu,
+portanto sua ausência de pacotes não demonstra ausência de tráfego externo.
+A captura corrigida de SYN em `nic1` validou controles LAN e NAT loopback e
+abrangeu o intervalo da tentativa 4G informada pelo proprietário. Houve também
+SYN com origem aparente igual à WAN, sem identificação da origem real. Não foi
+identificada origem externa distinta atribuível à tentativa 4G. Isso orienta
+a investigação do caminho anterior ao servidor; eventual SNAT impede atribuir
+definitivamente a falha ao roteador ou à operadora. O status WAN enviado pelo
+proprietário confirmou a conexão IPv4 ativa com o endereço esperado pelo DNS;
+o vínculo dos mapeamentos à conexão WAN correta foi conferido.
+
+Próximo teste orientado: regra temporária **WAN TCP 10443 → LAN TCP 443 do PVE**,
+na mesma conexão WAN. A criação ainda não foi confirmada pelo proprietário e
+o teste não foi aplicado; não houve alteração adicional no PVE ou na edge.
+
+O túnel temporário de teste foi encerrado; o health do endpoint privado na
+porta 18096 respondeu HTTP 200. Isso não comprova acesso público.
+
+A publicação permanece em ativação, sem anúncio de disponibilidade pública.
+O firewall mantém as proteções e não foram liberadas portas adicionais.
+O diagnóstico TLS temporário do Caddy fica em arquivo privado 0600, limitado
+a 1 MiB; logs de requisições HTTP continuam desativados. IPs e capturas brutas
+permanecem fora do Git.
+
+Os registros abaixo preservam a cronologia; afirmações de apps ainda parados
+ou de edge → playback negado descrevem os momentos anteriores desta migração.
+
 ## Publicação do acervo em 16/11
 
 A migração da autoridade de storage para o protocolo v2 foi aplicada em HOLD,
@@ -19,8 +92,9 @@ compartilham os inodes publicados e não são um backup independente.
 Uma amostra recém-publicada de cada origem passou pelo HTTP do Jellyfin e por
 três trechos de decodificação: nove trechos no total, com histórico de usuários
 inalterado e mídia RO. Não é um teste de todos os arquivos ou de cliente externo.
-O delta final das origens, o arquivo degradado e a retomada da automação ainda
-estão abertos. Os registros anteriores abaixo descrevem suas respectivas etapas.
+O delta de metadados foi depois conferido conforme o resumo atual. O arquivo
+degradado e a retomada da automação continuam abertos. Os registros anteriores
+abaixo descrevem suas respectivas etapas.
 
 Atualização documental: **16/11/2026**. A publicação inicial de 14/11 estabeleceu
 a separação de repositórios na branch `refactor`. **O proprietário instalou
@@ -63,7 +137,7 @@ verificados.** Consulte
 | Observabilidade | Seis targets ativos; 25 painéis provisionados por API (22 com revisão visual anterior); sinais Jellyfin/lease/frescor e alerta de coletor obsoleto disparado/resolvido | Revisão visual dos três painéis novos, consumo sob carga e sonda independente; canal externo adiado pelo proprietário |
 | Host Proxmox | Instalação no SSD autorizado, inventário e acesso privado SSH/HTTPS verificados; `vmbr0` preservada | Restringir gestão na LAN; o firewall do host mantém `enable: 0` |
 | VMs base | Três VMs de mídia e homelab-control; QGA/SSH e cloud-init conferidos; core reduzido para 4 GiB, mantendo 11 GiB totais; reboot do controle aceito com autostart em ordem 5 | Capacidade sob carga; reboot isolado do controle não demonstra novo reboot integral do host |
-| Rede dos convidados | Bridge privada, NAT sem DNAT, firewall legado ativo; provas TCP/pacotes e persistência dos filtros após reboot conferidas | Revisão da WAN dinâmica, restrição da gestão LAN e aceite dos fluxos de aplicações |
+| Rede dos convidados | Bridge privada, firewall ativo e DNAT limitado a TCP 80/443; isolamento/backend e proxy conferidos | Certificado TLS, reprodução externa e restrição da gestão LAN; persistência da nova publicação ainda sem ensaio de reboot |
 | Aplicações | Jellyfin privado, mídia RO e transcode em SSD de 32 GiB; encode curto por CPU, API, 18 logins/logouts e reboot com readmissão conferidos | Login interativo, cliente externo e capacidade sob carga; automação e GPU ausentes |
 | Hub de arquivos | HD exclusivo do core e NFS RO; guard e lease aplicados; expiração, HOLD, parada manual e recusa da lease de boot anterior testados | Recuperação USB automática e consolidação verificada |
 | Energia | Estados e regras de reintegração USB | Nobreak, comunicação, coordenação host/guest e teste de falhas |
@@ -119,13 +193,14 @@ pendentes, sem bloquear a recuperação do acervo.
   setores pendentes, 8 offline não corrigíveis, 14 erros reportados e limiar
   histórico de temperatura. Avaliar o que já está preservado antes de novas
   leituras intensivas; SMART geral aprovado não comprova integridade.
-- **Core:** Docker/Compose instalados, zero containers. Sete árvores restauradas
+- **Core, etapa inicial de restauração em 16/11:** Docker/Compose instalados,
+  então zero containers. Sete árvores restauradas
   para staging SSD privado novo: 23.566.307.737 bytes, 8.676 arquivos, 718
   diretórios e três links de logs permitidos. Manifesto fixado, hashes dos
   arquivos selecionados e metadados conferidos; não foi repetido o hash integral
   do TAR. Auditoria offline dos seis bancos, incluindo cópia dos sidecars, passou
   em `quick_check`; configuração qBit também foi fingerprintada. Nenhum app do
-  core foi readmitido. Tarefas nativas continuam exigindo contenção por versão;
+  core havia sido readmitido nessa etapa. Tarefas nativas exigem contenção por versão;
   simples restauração e presença de banco não comprovam inicialização segura.
 - **Imagens do core:** arquivo de imagens do checkpoint copiado para o SSD,
   SHA-256 conferido e carregamento concluído; 49 IDs de imagem locais conferidos
@@ -576,12 +651,13 @@ Após o reboot, autenticação, identidade, hashes do catálogo/usuários/histó
 e contenção de scans passaram novamente. As 20 tarefas continuaram ociosas
 sem gatilhos, e as três bibliotecas mantiveram monitoramento em tempo real
 desabilitado; não houve erros nem execução de scans nos logs examinados. O
-core recebeu resposta de saúde `Healthy` na porta 8096. A edge continuou sem
-acesso às portas 8096 e 18096 da playback. Isso não comprova falha/retorno
+core recebeu resposta de saúde `Healthy` na porta 8096. Nesse aceite inicial,
+a edge continuou sem acesso às portas 8096 e 18096 da playback; a exceção
+posterior para 8096 está no resumo atual de 16/11. Isso não comprova falha/retorno
 físico do HD USB ou reprodução pela internet.
 
-Arr, qBittorrent, controlador e workers permanecem parados; o Compose monolítico
-não foi iniciado. A edge e a publicação WAN continuam fechadas.
+Arr, qBittorrent, controlador e workers permaneciam parados nessa etapa;
+o Compose monolítico não foi iniciado. Edge e publicação WAN estavam fechadas.
 
 ### Transcode SSD e acesso às contas
 
