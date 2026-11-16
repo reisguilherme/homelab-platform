@@ -1,0 +1,9 @@
+# Dedicated 32 GiB virtual disk for the playback guest; never use a media disk.
+# Confirm the allocated device and authorize formatting/mounting before applying.
+# Replace the documentation UUID with the ext4 UUID of that verified new disk.
+# Filesystem root: root:root 0755; data/: 1000:1000 0700.
+# .homelab-volume-id: root:root 0444, containing exactly that UUID and a newline.
+# Keep this marker outside data/ so Jellyfin cannot rewrite its identity.
+# noauto allows SSH recovery; the existing Docker unit requires this mount.
+# Filesystem overhead means usable space is below the disk size of 32 GiB.
+UUID=00000000-0000-0000-0000-000000000000 /srv/transcode ext4 noauto,nodev,nosuid,noexec,noatime,errors=remount-ro,x-systemd.device-timeout=30s 0 2

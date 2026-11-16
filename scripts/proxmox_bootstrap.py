@@ -2,6 +2,7 @@
 
 import argparse
 import base64
+import hashlib
 import ipaddress
 import json
 import re
@@ -219,9 +220,11 @@ def commands(p):
                 "create",
                 vmid,
                 "--name",
-                f"homelab-{vm['role']}",
+                f"mediaserver-{vm['role']}",
+                "--tags",
+                "mediaserver",
                 "--description",
-                f"homelab-platform bootstrap role={vm['role']}",
+                f"homelab-platform bootstrap owner=mediaserver role={vm['role']}",
                 "--cores",
                 str(vm["cores"]),
                 "--sockets",
@@ -270,10 +273,21 @@ def commands(p):
                 "--nameserver",
                 " ".join(p["dns"]),
                 "--cicustom",
-                "vendor=local:snippets/homelab-vendor.yaml",
+                "vendor=local:snippets/homelab-vendor.yaml,"
+                f"meta=local:snippets/homelab-meta-{vmid}.yaml",
             ],
         ]
     return result
+
+
+def cloudinit_metadata(p, vm):
+    """Pin a new guest's identity; never replace an existing guest's current ID."""
+    identity = json.dumps(
+        ["homelab-platform/nocloud/v1", p["system_serial"], p["node"], vm["id"]],
+        separators=(",", ":"),
+    )
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+    return f"instance-id: homelab-{digest}\n"
 
 
 def write_bundle(p, key, output):
@@ -316,6 +330,7 @@ def write_bundle(p, key, output):
         + "\n",
     }
     files.update({f"{v['id']}.fw": firewall(p, v) for v in p["vms"]})
+    files.update({f"homelab-meta-{v['id']}.yaml": cloudinit_metadata(p, v) for v in p["vms"]})
     for name, value in files.items():
         path = output / name
         with path.open("x", encoding="utf-8", newline="\n") as stream:

@@ -14,7 +14,11 @@ RO para playback. Configuração e cache do Jellyfin foram restaurados e
 conferidos no core e na playback; Docker e a imagem foram instalados na
 playback. Jellyfin iniciou saudável, com API autenticada, catálogo preservado,
 leitura HTTP e decodificação por CPU conferidos. O reboot da playback confirmou
-retorno automático do NFS RO, Docker e Jellyfin. Restrição da gestão LAN e
+retorno automático do NFS RO, Docker e Jellyfin no perfil inicial. Depois,
+transcode recebeu SSD dedicado de 32 GiB e as 18 senhas foram redefinidas, com
+encode curto por CPU e logins/logouts conferidos. A lease obrigatória foi
+implantada; expiração, HOLD e preservação de parada manual passaram. Reboot
+com SSD/lease passou e exige readmissão explícita. Restrição da gestão LAN e
 recuperação automática de USB continuam pendentes; a prontidão de produção
 permanece falsa. O
 [roteiro de instalação assistida](runbooks/proxmox-installation-handoff.md)
@@ -28,8 +32,8 @@ preserva a preparação e a passagem realizadas.
 | Host Proxmox | Instalação no SSD autorizado, inventário e acesso privado SSH/HTTPS verificados; `vmbr0` preservada | Restringir gestão na LAN; o firewall do host mantém `enable: 0` |
 | VMs base | Core, playback e edge `running`, QGA/SSH/NTP operantes, cloud-init concluído; autostart ordenado conferido após reboot | Capacidade sob carga e prontidão das aplicações |
 | Rede dos convidados | Bridge privada, NAT sem DNAT, firewall legado ativo; provas TCP/pacotes e persistência dos filtros após reboot conferidas | Revisão da WAN dinâmica, restrição da gestão LAN e aceite dos fluxos de aplicações |
-| Aplicações | Jellyfin 12.2 saudável em Compose independente; API autenticada, catálogo, leitura HTTP e decodificação por CPU conferidos; retorno após reboot aceito | Login interativo, cliente externo e capacidade sob carga; automação e GPU ausentes |
-| Hub de arquivos | HD exclusivo do core; NFS RO restrito à playback; negações de escrita e reboot do core conferidos; guard de mount aceito; Docker exige NFS e retorno após reboot da playback passou | Recuperação USB automática e consolidação verificada |
+| Aplicações | Jellyfin privado, mídia RO e transcode em SSD de 32 GiB; encode curto por CPU, API, 18 logins/logouts e reboot com readmissão conferidos | Login interativo, cliente externo e capacidade sob carga; automação e GPU ausentes |
+| Hub de arquivos | HD exclusivo do core e NFS RO; guard e lease aplicados; expiração, HOLD, parada manual e recusa da lease de boot anterior testados | Recuperação USB automática e consolidação verificada |
 | Energia | Estados e regras de reintegração USB | Nobreak, comunicação, coordenação host/guest e teste de falhas |
 | K3s | Critérios de adoção e fronteiras | Recursos adicionais, implantação e contratos dos workloads |
 
@@ -293,9 +297,10 @@ O container iniciou saudável, com HTTP privado na porta 8096, e recebe mídia
 por NFS RO confirmado, com configuração e cache graváveis no disco virtual
 local. A preparação offline preserva bancos e desabilita agendas
 nativas e monitoramento em tempo real enquanto o acervo está parcial; plugins
-ficam separados da configuração ativa. Sem GPU entregue à VM, o perfil usa
-CPU e transcode em tmpfs de 512 MiB. Isso não comprova capacidade para dez
-reproduções, transcode 4K ou operação contínua sob carga.
+ficam separados da configuração ativa. O perfil inicial usou CPU e tmpfs de
+512 MiB; depois foi substituído pelo SSD dedicado descrito abaixo. Nenhuma GPU
+foi entregue à VM. Esses aceites não comprovam dez reproduções, transcode 4K
+ou operação contínua sob carga.
 
 O drop-in da unit Docker existente na playback exige o mount NFS, inclusive
 com `noauto` mantido no `fstab`. O guard do consumidor verifica identidade,
@@ -306,7 +311,8 @@ automaticamente pela dependência do Docker, mantendo `noauto` no `fstab`.
 Docker voltou ativo e Jellyfin saudável, com contador de reinícios do container
 em zero. Nenhuma unit foi criada no host Proxmox.
 
-A API autenticada confirmou 20 tarefas ociosas sem gatilhos e três bibliotecas
+Na referência anterior à redefinição de senhas, a API autenticada confirmou
+20 tarefas ociosas sem gatilhos e três bibliotecas
 sem monitoramento em tempo real. A identidade original do servidor e os 18
 usuários foram preservados, sem erros nem execução de scans nos logs
 examinados. SQLite passou na verificação de integridade; os hashes comparados
@@ -331,6 +337,73 @@ físico do HD USB ou reprodução pela internet.
 
 Arr, qBittorrent, controlador e workers permanecem parados; o Compose monolítico
 não foi iniciado. A edge e a publicação WAN continuam fechadas.
+
+### Transcode SSD e acesso às contas
+
+O proprietário autorizou o novo disco virtual de **32 GiB em `local-lvm`**,
+conectado como `scsi1` da playback. Recebeu ext4 e mount por UUID em
+`/srv/transcode`; o container usa a subpasta de dados RW e um marcador de
+identidade RO. A mídia permanece RO e o limite de RAM do container é **3 GiB**,
+sem alteração. Nenhum disco físico ou acervo foi formatado nessa entrega.
+Guard correto, mount ausente, UUID divergente, escrita como UID 1000 e marcador
+RO passaram nas provas reais. Um reboot posterior confirmou retorno do SSD
+por UUID, NFS RO e Docker, com readmissão explícita antes do Jellyfin saudável.
+
+O encode CPU `libx264` produziu **10,01 s em 720p**, em **1,149 s**, com
+**281.888 bytes**. Somente a saída de teste própria foi removida e `UserData`
+permaneceu igual; o trecho não prova carga contínua ou reprodução em cliente.
+
+As **18 senhas distintas de dez caracteres aleatórios** foram redefinidas
+pela API e passaram em login/logout. Políticas permaneceram iguais, salvo três
+`InvalidLoginAttemptCount` zerados naturalmente pelo login correto. Hashes
+de 807 `UserData`, 432 `Permissions` e 234 `Preferences` permaneceram estáveis.
+A relação em texto simples fica somente no Windows privado, sem nomes, valores
+ou caminhos privados publicados. Abyss foi adiado e não foi instalado.
+
+Na inspeção seguinte, `UserData` tinha **813 registros**. A comparação confirmou
+os 807 originais idênticos e seis adições observadas enquanto a aplicação estava
+disponível. Esses registros foram preservados, sem rollback; o hash do conjunto
+atual não é o hash original de 807 registros. O teste de encode acima mantém
+seu recibo próprio sem alteração de `UserData`; as adições não são atribuídas
+a esse teste. A conferência posterior ao reboot preservou os 807 originais e
+as seis adições; BaseItems, Permissions e Preferences também coincidiram.
+
+A inspeção da iGPU Intel encontrou grupo IOMMU isolado, somente em leitura;
+não houve passthrough ou teste de aceleração.
+
+### Admissão obrigatória de storage
+
+As VMs do consumidor foram identificadas como `mediaserver-core`,
+`mediaserver-playback` e `mediaserver-edge`, com tag `mediaserver` e papel
+correspondente. A tag `homelab` fica reservada à plataforma. IDs, discos e rede
+foram preservados. Como o metadata automático do cloud-init deriva também
+do nome, as identidades atuais foram fixadas em snippets próprios. O segundo
+reboot da playback preservou sua chave SSH; os próximos boots dos outros
+convidados ainda precisam dessa conferência. Esses nomes não significam que
+API, portal e dashboards da plataforma já estejam implantados.
+
+A lease implantada dura até **45 segundos**, vinculada
+ao boot do guest, e o consumidor a recusa se estiver ausente, inválida ou
+expirada. Falhas mantêm `HOLD`; `resume` explícito exige prova nova do storage.
+O coordenador não executa start, mas readmissão pode permitir retorno pela
+política Docker `unless-stopped`; parada manual via Docker permanece respeitada.
+O consumidor foi aceito saudável com lease obrigatória. A expiração sintética
+enviou TERM ao filho em 11,502 s; HOLD real deixou HTTP indisponível e nenhum
+processo Jellyfin ativo. Uma parada manual pelo Docker permaneceu após READY;
+somente start explícito retomou o serviço saudável. O cron usa watch de 58 s,
+deadline de probe de 15 s e TTL máximo de 45 s. A cadência inicial mais curta
+causou HOLD indevido na passagem ao cron e foi corrigida; comando ocupado
+retorna 75, sem afirmar que a readmissão ocorreu.
+
+A observação contínua por 135 segundos atravessou duas passagens de minuto
+com o coordenador armado e autorizações saudáveis, sem HOLD indevido.
+
+**Não há retorno integral desassistido:** lease de outro boot deve ser
+recusada, com prova nova e readmissão explícita. O ensaio de reboot com SSD/lease
+passou, incluindo a recusa anterior à readmissão; reboot do Proxmox exige auditoria do estado do coordenador
+antes da readmissão. O
+[runbook de storage](runbooks/storage-core-handoff.md) separa esse contrato da
+recuperação física ainda não comprovada.
 
 O guard de mount não detecta necessariamente HD desligado com NFS `hard`
 ainda registrado; operações podem bloquear no kernel. Falha/retorno físico

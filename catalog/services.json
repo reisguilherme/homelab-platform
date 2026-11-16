@@ -12,7 +12,7 @@
     {
       "id": "media-playback",
       "repository": "https://github.com/reisguilherme/homelab-mediaserver",
-      "commit": "2ac092cdb3f6e57e26505fc123f13f21d87cf141",
+      "commit": "fc9a560c613431a0d95b4fb4beb5726792b62750",
       "contractPath": "platform.playback.contract.json",
       "manifestPaths": ["compose.playback.yaml"],
       "status": "deployed"

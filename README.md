@@ -15,8 +15,15 @@ por NFS RO, com escrita negada em fixture. Docker e a imagem Jellyfin 12.2
 foram instalados na playback, com configuração e cache restaurados e
 conferidos. Jellyfin iniciou saudável; API autenticada, preservação do catálogo,
 leitura HTTP e decodificação por CPU passaram. O reboot da playback confirmou
-retorno automático do NFS RO, Docker e Jellyfin. Recuperação USB e publicação
-continuam pendentes; a automação de mídia permanece parada.
+retorno automático do NFS RO, Docker e Jellyfin no perfil inicial. Depois,
+transcode recebeu SSD virtual dedicado de 32 GiB, mantendo 3 GiB de RAM no
+container; um encode curto por CPU passou. As 18 senhas foram redefinidas e
+testadas por login/logout, com a relação somente no Windows privado. A lease
+obrigatória está implantada, com expiração, HOLD e pausa manual testados.
+Reboot com SSD/lease passou, recusando a lease anterior. Readmissão exige ação explícita e
+prova nova; reboot do Proxmox pede auditoria do estado, sem promessa de retorno
+integral desassistido. Recuperação
+USB e publicação continuam pendentes; a automação de mídia permanece parada.
 Prometheus/Grafana estão preparados; K3s é futuro.
 O [gerador de bootstrap](scripts/proxmox_bootstrap.py) produz um bundle offline,
 sem deploy; publicar arquivos não aplica alterações ao servidor.
@@ -111,7 +118,8 @@ de 18 TB foi reconectado e entregue ao core, com exportação de mídia RO para
 playback; o backup ficou fora do export. Docker e a imagem Jellyfin foram
 instalados somente na playback, com restauração selecionada da configuração
 e do cache. Jellyfin está saudável com catálogo e usuários preservados,
-inclusive após reboot da playback. Não há GPU entregue aos convidados
+inclusive no reboot do perfil inicial. O transcode agora usa SSD dedicado;
+seu retorno após reboot foi conferido com readmissão explícita. Não há GPU entregue aos convidados
 nem automação de mídia iniciada. O firewall legado
 dos convidados está ativo, mas o firewall do host mantém `enable: 0`; a
 restrição da gestão na LAN continua pendente. A inicialização

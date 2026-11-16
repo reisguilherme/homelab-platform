@@ -15,6 +15,36 @@ atribuir usuários e ACL por VM, aplicar regras de rede e publicar recursos de
 storage. A aplicação poderá operar seus serviços com identidade restrita;
 receber métricas ou um volume não concede administração do Proxmox.
 
+## Identidade e propriedade dos recursos
+
+O bootstrap deste diretório cria a unidade de mídia: os nomes exibidos no
+Proxmox são `mediaserver-core`, `mediaserver-playback` e `mediaserver-edge`,
+com a tag `mediaserver`. A descrição registra `owner=mediaserver` e o papel.
+A tag `homelab` fica reservada a recursos próprios da plataforma, como
+governança, painéis e controles compartilhados. Tags e nomes organizam o
+inventário; não concedem ACLs nem isolam redes por si só.
+
+Esses nomes identificam o consumidor, mesmo quando a plataforma administra
+seus recursos. Storage físico, exports e coordenação de falhas continuam sob
+responsabilidade da plataforma. O HD está entregue ao core da mídia nesta
+fase; isso não autoriza futuros consumidores a usar suas credenciais ou
+seus dados. Uma integração como Immich exige export, acesso e orçamento
+próprios, além de rever a localização do hub compartilhado.
+
+A correção de nomes preserva VMIDs, discos e regras de rede, mas **não é
+apenas visual em guests cloud-init**: o nome entra no user-data gerado pelo
+Proxmox e pode mudar o instance-id no próximo boot, reaplicando módulos e
+regenerando chaves SSH. A playback apresentou esse efeito durante a
+renomeação; as novas chaves foram conferidas pelo QGA do host autenticado.
+Não presumir que hostname, DNS ou identidade SSH ficaram iguais. Fixar o
+instance-id atual em metadata próprio antes de outro reboot e seguir o
+[runbook](../../docs/runbooks/proxmox-guests.md#identidade-no-proxmox-e-renomeação).
+Novos bundles incluem um snippet de metadata distinto por VM, sem substituir
+user-data, configuração de rede ou vendor-data. Esse ID novo não deve ser
+aplicado a uma VM já inicializada; não executar o bootstrap para renomear.
+Os nomes de snippets, chaves de operador e regras de rede continuam
+identificadores da infraestrutura e não são tags de propriedade das VMs.
+
 ## Host entregue e próximos passos
 
 O [roteiro de instalação assistida](../../docs/runbooks/proxmox-installation-handoff.md)

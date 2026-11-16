@@ -39,6 +39,18 @@ próprios; o catálogo aponta para commits imutáveis e distingue proposta de ex
   Docker e Jellyfin, preservando catálogo e contenção de scans. Login
   interativo e reprodução em cliente externo não foram testados, conforme
   [Jellyfin na playback](docs/implementation-status.md#jellyfin-na-playback).
+  Depois desse aceite inicial, o proprietário autorizou o disco virtual novo
+  de 32 GiB para transcode ext4, montado por UUID na playback. O guard exige
+  identidade e subpasta RW, com marcador RO; mídia continua RO e o container
+  mantém 3 GiB de RAM. Encode curto por CPU e 18 logins/logouts após redefinição
+  de senha passaram. A relação de credenciais fica somente no Windows privado.
+  Abyss permanece adiado; inspeção da iGPU foi somente leitura, sem passthrough.
+  A lease obrigatória de até 45 segundos está implantada; expiração, HOLD e
+  preservação de parada manual foram testados. `resume` exige prova nova;
+  readmissão pode permitir restart por `unless-stopped`, preservando parada
+  manual via Docker. Reboot com SSD/lease passou, recusando a lease anterior; após reboot
+  do Proxmox, auditar o estado antes de readmitir. Não prometer retorno integral
+  desassistido.
   Recuperação USB e publicação continuam pendentes. A prova NFS RO não
   comprova integridade global do acervo.
 - Dispositivos e escopo exatos precisam de autorização antes de alteração

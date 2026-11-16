@@ -131,7 +131,7 @@ essa unit de mount deixa de estar ativa, a dependência também para o Docker.
 O vínculo afeta todo o daemon; não aplicar em um nó Docker compartilhado.
 [Semântica oficial de RequiresMountsFor e BindsTo](https://www.freedesktop.org/software/systemd/man/latest/systemd.unit.html#RequiresMountsFor=).
 
-A configuração aplicada foi relida e as dependências efetivas foram
+Na entrega inicial, a configuração aplicada foi relida e as dependências efetivas foram
 conferidas. `systemd-analyze verify` passou ao receber explicitamente a unit
 de mount gerada junto da unit Docker. Um restart do Docker ainda vazio
 também passou. Depois, o Jellyfin restaurado iniciou e o reboot da playback
@@ -144,6 +144,63 @@ dependência não detecta a perda de saúde nem implementa reintegração
 automática. O consumidor precisa conferir a identidade e o modo RO do mount,
 conter scans e coordenar sua retomada. Restauração, configuração e aceites da
 aplicação ficam no [runbook de playback do serviço de mídia](https://github.com/reisguilherme/homelab-mediaserver/blob/2ac092cdb3f6e57e26505fc123f13f21d87cf141/docs/runbooks/playback-nfs.md).
+
+## Disco dedicado para transcode
+
+O proprietário autorizou depois um disco virtual **novo de 32 GiB em
+`local-lvm`**, conectado como `scsi1` somente à playback. Foi formatado ext4 e
+montado por UUID em `/srv/transcode`. A raiz e o marcador de identidade são
+de root; somente `data/` é a área RW do UID 1000. O Jellyfin recebe essa
+subpasta em `/transcode` e o marcador RO, mantendo mídia RO e limite de 3 GiB
+de RAM. O tmpfs provisório de 512 MiB deixou de ser o destino de transcode.
+
+As provas reais conferiram guard correto, recusa de mount ausente e UUID
+divergente, escrita UID 1000 na área temporária e proteção RO do marcador.
+Um encode CPU `libx264` de 10,01 s/720p terminou em 1,149 s, com 281.888 bytes,
+sem mudança em `UserData`; só a saída de teste própria foi removida. Isso não
+mede dez reproduções ou operação contínua. Um reboot posterior confirmou o
+retorno do SSD por UUID, do NFS RO e do Docker, com readmissão explícita.
+O filesystem limita essa área, mas o uso físico do thin pool continua exigindo
+acompanhamento. Nenhum disco do acervo foi formatado.
+
+## Admissão obrigatória de storage
+
+O coordenador implantado publica no SSD da playback uma lease vinculada
+ao boot do guest, com validade máxima de **45 segundos**. O consumidor exige
+essa autorização e recusa ou para quando ela está ausente, inválida ou expirada. A
+plataforma coordena a prova de storage; mount presente não significa disco
+saudável. Um probe pendente não deve originar novos probes concorrentes.
+
+Uma falha mantém `HOLD`. `resume` é ação explícita e depende de prova nova;
+reconectar o HD não basta para readmitir o consumidor. O coordenador não
+executa start, mas a lease renovada pode permitir reinício pela política
+Docker `unless-stopped`. Uma parada manual pelo Docker permanece respeitada.
+
+O consumidor iniciou saudável com lease obrigatória. Em expiração sintética,
+o processo filho recebeu TERM em **11,502 s**; o tempo observado não é RTO
+garantido. No HOLD real, HTTP ficou indisponível e não havia processo Jellyfin.
+Um `docker stop` manual permaneceu respeitado após READY; somente start
+explícito voltou a deixar o serviço saudável. O ensaio não desligou o HD.
+
+O cron existente executa watch de **58 s**, com deadline de probe de **15 s**
+e TTL máximo de **45 s**. A janela inicial mais curta deixou um intervalo na
+passagem ao cron e gerou HOLD indevido; a cadência foi corrigida. Disputa de
+lock retorna **75**, não confirmação de sucesso. Conferir o estado antes de
+repetir uma readmissão.
+
+**Reboot exige readmissão, sem retorno integral desassistido.** Lease de outro
+boot deve ser recusada; prova nova e `resume` explícito precisam preceder a
+retomada permitida pelo Docker. O ensaio com SSD/lease passou: a autorização do
+boot anterior foi recusada, a chave SSH permaneceu estável e Jellyfin voltou
+saudável após prova nova. Catálogo, 807 históricos originais e seis adições
+observadas foram preservados; SQLite passou no quick_check.
+Após reboot do Proxmox, auditar o estado do coordenador antes de readmitir;
+esse limite faz parte do desenho atual.
+
+A entrega não prevê montagem/reparo automático, reanexação USB, reboot
+automático ou retomada com identidade incerta. I/O preso em NFS `hard`, energia
+do HD e reintegração física continuam com limites próprios. Não remover um
+`HOLD` ou renovar autorização apenas para obter saúde aparente.
 
 ## Limites e próxima etapa
 

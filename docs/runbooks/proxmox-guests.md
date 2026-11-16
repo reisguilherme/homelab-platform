@@ -7,6 +7,65 @@ o HD de 18 TB foi entregue ao core e NFS RO foi aplicado para playback,
 conforme a [etapa de storage](storage-core-handoff.md). Publicação, restauração,
 GPU e recuperação automática USB permanecem pendentes.
 
+## Identidade no Proxmox e renomeação
+
+As três VMs deste bootstrap pertencem ao consumidor de mídia. Os nomes
+definidos para o inventário do Proxmox são `mediaserver-core`,
+`mediaserver-playback` e `mediaserver-edge`, com a tag `mediaserver`.
+`homelab` identifica recursos próprios da plataforma, incluindo governança,
+painéis e controles compartilhados. A plataforma continua responsável pelo
+provisionamento, rede e storage físico. Nome e tag não substituem ACLs.
+
+O gerador produz esses nomes para novas implantações. Os registros abaixo
+descrevem as provas do bootstrap original por papel; não demonstram que uma
+renomeação posterior já ocorreu. O estado atual e seu aceite ficam no
+[registro de implementação](../implementation-status.md).
+
+Para corrigir uma VM existente, usar seu VMID já conferido e uma alteração
+de metadados, sem reaplicar o bundle, recriar guests ou trocar discos:
+
+1. Registrar privadamente `qm config <VMID>` e confrontar papel, discos,
+   endereços e nome esperado. Preservar tags adicionais que não indiquem
+   propriedade; retirar a tag `homelab` somente das VMs de mídia.
+2. Colocar o coordenador de storage em `HOLD` pelo procedimento de
+   [contenção](../../infrastructure/storage/README.md). Esperar os processos
+   QGA pendentes terminarem antes de alterar nomes ou o perfil. Não apagar
+   estado para ignorar operação ainda desconhecida.
+3. Antes de mudar nome ou reiniciar, obter pelo QGA do host autenticado o
+   instance-id atualmente usado em `/var/lib/cloud/instance`, o hostname e
+   as fingerprints SSH. Criar um snippet privado de metadata NoCloud com
+   **esse mesmo instance-id**, único para a VM. Acrescentar sua referência
+   `meta=local:snippets/<arquivo>` a `cicustom`, preservando todas as entradas
+   existentes, inclusive `vendor`, `user` e `network`. Não usar um ID novo,
+   limpar `/var/lib/cloud` ou executar `cloud-init clean`. Conferir o arquivo
+   e sua referência; o dump do metadata gerado pelo PVE pode mostrar o
+   conteúdo automático, portanto não é prova suficiente do snippet aplicado.
+4. Aplicar `qm set <VMID> --name mediaserver-<papel> --tags <tags-revisadas>
+   --description <descricao-revisada>` com argumentos individuais e valores
+   conferidos. A descrição deve identificar `owner=mediaserver` e o papel;
+   manter qualquer informação operacional já necessária.
+5. Atualizar os nomes esperados no perfil privado do supervisor, usando a
+   transição de estado compatível com seu digest. Não alterar VMID, USB,
+   mount ou configuração de rede para acompanhar a mudança de nome.
+6. Conferir novamente configurações, acesso e checks da aplicação. Só
+   readmitir storage com `resume` explícito e prova nova, respeitando pausas
+   manuais. No próximo reboot autorizado, verificar o instance-id efetivo,
+   hostname, cloud-init, chaves SSH e aplicação. Registrar o resultado
+   separadamente da evidência anterior.
+
+O nome do Proxmox participa do hostname no user-data automático. NoCloud
+gera o instance-id a partir de user-data e rede quando não há metadata
+próprio; uma mudança pode ser interpretada como nova instância. A etapa de
+renomeação da playback comprovou hostname novo e regeneração de chaves após
+reboot. A identidade nova foi verificada via QGA autenticado antes de atualizar
+o known_hosts. Se SSH recusar uma chave, não desabilitar a verificação nem
+aceitar a chave apenas pelo endereço. A fixação do instance-id evita esse
+motivo de reinicialização dos módulos por instância; não dispensa conferir
+hostname e DNS nem impede alterações deliberadas de identidade.
+[Geração oficial de cloud-init no Proxmox](https://github.com/proxmox/qemu-server/blob/master/src/PVE/QemuServer/Cloudinit.pm),
+[identidade NoCloud](https://docs.cloud-init.io/en/latest/reference/datasources/nocloud.html),
+[módulo SSH e frequência por instância](https://docs.cloud-init.io/en/latest/reference/modules.html#ssh).
+
 ## Estado comprovado no bootstrap
 
 | Papel | vCPU | RAM fixa | Disco virtual | Resultado |
@@ -107,6 +166,17 @@ tem console serial. Chaves privadas permanecem no operador; obter a chave de
 host pelo QGA/console autenticado e conferir uma sessão separada antes de
 aceitar o SSH da VM. [Cloud-init no Proxmox](https://github.com/proxmox/pve-docs/blob/master/qm-cloud-init.adoc).
 
+Novos bundles também incluem `homelab-meta-<VMID>.yaml` com um instance-id
+fixo por VM: SHA-256 de um namespace versionado, serial do sistema, nó e VMID.
+Ele não depende de nome, papel, rede ou chave SSH. O argumento `cicustom`
+referencia esse arquivo e preserva o vendor snippet; user-data e rede
+continuam gerados pelo PVE. Instalar cada metadata no storage de snippets
+antes do primeiro start. Manter o mesmo arquivo durante a vida da VM e em
+migrações; não recalcular identidade de VM existente a partir de outro host.
+Clones ou VMs realmente novas precisam de ID próprio. Esses snippets são
+privados como o bundle; o teste offline verifica conteúdo e referências, não
+a identidade efetiva após boot.
+
 ## Gerar o bundle sem aplicar
 
 O [gerador](../../scripts/proxmox_bootstrap.py) funciona offline: valida o
@@ -124,7 +194,8 @@ python scripts/proxmox_bootstrap.py /caminho/privado/profile.json \
 
 A pasta de saída deve ser nova e seu diretório pai já deve existir. A chave
 deve ser ED25519 pública válida. O bundle contém fragmento de interfaces,
-forwarding IPv4, configurações de firewall, chave pública, vendor-data e
+forwarding IPv4, configurações de firewall, chave pública, vendor-data,
+metadata com identidade fixa por VM e
 `plan.json` com comandos estruturados por argumentos. Os campos `applied`
 e `live_preflight_passed` começam falsos. A geração não concede aceite de runtime.
 

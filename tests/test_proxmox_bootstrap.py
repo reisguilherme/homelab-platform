@@ -145,6 +145,54 @@ def test_private_keys_rejected_without_partial_bundle(profile, tmp_path):
     assert not (tmp_path / "bad").exists()
 
 
+def test_guest_names_and_tags_identify_the_mediaserver_owner(profile):
+    commands = bootstrap.commands(profile)
+    creates = [command for command in commands if command[1] == "create"]
+    for vm, command in zip(profile["vms"], creates, strict=True):
+        assert command[2] == str(vm["id"])
+        assert command[command.index("--name") + 1] == f"mediaserver-{vm['role']}"
+        assert command[command.index("--tags") + 1] == "mediaserver"
+        assert command[command.index("--description") + 1] == (
+            f"homelab-platform bootstrap owner=mediaserver role={vm['role']}"
+        )
+
+
+def test_bundle_pins_distinct_cloudinit_instance_ids_without_replacing_user_or_network(
+    profile, tmp_path
+):
+    key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    output = tmp_path / "bundle"
+    bootstrap.write_bundle(profile, key, output)
+    commands = json.loads((output / "plan.json").read_text())["commands"]
+    ids = []
+    for vm in profile["vms"]:
+        name = f"homelab-meta-{vm['id']}.yaml"
+        metadata = yaml.safe_load((output / name).read_text())
+        assert set(metadata) == {"instance-id"}
+        assert isinstance(metadata["instance-id"], str) and metadata["instance-id"]
+        ids.append(metadata["instance-id"])
+        command = next(c for c in commands if c[2] == str(vm["id"]) and "--cicustom" in c)
+        custom = dict(
+            item.split("=", 1) for item in command[command.index("--cicustom") + 1].split(",")
+        )
+        assert custom == {
+            "vendor": "local:snippets/homelab-vendor.yaml",
+            "meta": f"local:snippets/{name}",
+        }
+    assert len(set(ids)) == len(profile["vms"])
+    updated = copy.deepcopy(profile)
+    updated["vms"][0]["cores"] += 1
+    updated["vms"][0]["ip"] = "172.28.64.11"
+    updated["vms"][0]["role"], updated["vms"][1]["role"] = (
+        updated["vms"][1]["role"],
+        updated["vms"][0]["role"],
+    )
+    bootstrap.write_bundle(updated, key, tmp_path / "updated")
+    for vm in profile["vms"]:
+        name = f"homelab-meta-{vm['id']}.yaml"
+        assert (output / name).read_bytes() == (tmp_path / "updated" / name).read_bytes()
+
+
 def test_nat_has_owned_symmetric_rules_and_no_management_reset(profile):
     text = bootstrap.bridge_config(profile)
     assert "auto vmbr0" not in text and "gateway " not in text
