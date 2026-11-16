@@ -27,6 +27,7 @@ services:
       PVE_WEB_URL: ${PVE_WEB_URL:?Set private HTTPS Proxmox console URL}
       GRAFANA_URL: ${GRAFANA_URL:?Set private HTTPS Grafana URL}
       CONTROL_DB_PATH: /var/lib/homelab-control/control.sqlite3
+      CONTROL_AUDIT_RETENTION_DAYS: ${CONTROL_AUDIT_RETENTION_DAYS:-90}
       CONTROL_PROFILES_JSON: ${CONTROL_PROFILES_JSON:?Set reviewed server-owned VM profiles}
       CONTROL_PROTECTED_VMIDS: ${CONTROL_PROTECTED_VMIDS:?Set protected VM identifiers}
       CONTROL_ALLOWED_NODES: ${CONTROL_ALLOWED_NODES:?Set allowed Proxmox nodes}

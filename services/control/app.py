@@ -1,8 +1,11 @@
 """Private same-origin API and portal. Run exactly one worker for memory sessions."""
 
+import asyncio
+import logging
 import os
 import secrets
 import sqlite3
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Query, Request, Response
@@ -10,7 +13,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .audit import OperationStore
+from .audit import MAINTENANCE_BATCH_SIZE, OperationStore
 from .auth import COOKIE, SessionStore, check_csrf, check_origin
 from .models import (
     Acl,
@@ -27,11 +30,41 @@ from .models import (
 from .operations import Governance
 from .proxmox import ProxmoxClient
 
+MAINTENANCE_INTERVAL_SECONDS = 3600
+logger = logging.getLogger(__name__)
+
+
+async def maintain_journal(store, retention_days):
+    while True:
+        work = asyncio.create_task(asyncio.to_thread(store.maintain, retention_days))
+        try:
+            # Cancellation must drain a running transaction before lifespan exits.
+            try:
+                await asyncio.shield(work)
+            except asyncio.CancelledError:
+                with suppress(Exception):
+                    await work
+                raise
+        except Exception:
+            logger.warning("Journal maintenance failed; retrying at the next interval.")
+        await asyncio.sleep(MAINTENANCE_INTERVAL_SECONDS)
+
 
 def create_app(settings, proxmox=None, audit=None):
-    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     pve = proxmox or ProxmoxClient(settings)
     store = audit or OperationStore(settings.db_path)
+
+    @asynccontextmanager
+    async def lifespan(_app):
+        maintenance = asyncio.create_task(maintain_journal(store, settings.audit_retention_days))
+        try:
+            yield
+        finally:
+            maintenance.cancel()
+            with suppress(asyncio.CancelledError):
+                await maintenance
+
+    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     sessions = SessionStore()
     service = Governance(settings, pve, store)
     app.state.sessions, app.state.governance = sessions, service
@@ -210,6 +243,15 @@ def create_app(settings, proxmox=None, audit=None):
     @app.get("/api/v1/audit")
     def audit_get(cursor: int = Query(default=0, ge=0, le=100000), session=session_dependency):
         return service.audit(session, cursor)
+
+    @app.get("/api/v1/audit/maintenance")
+    def maintenance_get(_session=session_dependency):
+        return {
+            "retentionDays": settings.audit_retention_days,
+            "intervalSeconds": MAINTENANCE_INTERVAL_SECONDS,
+            "batchSize": MAINTENANCE_BATCH_SIZE,
+            **store.maintenance_status(),
+        }
 
     static = Path(__file__).parent / "static"
     if static.is_dir():

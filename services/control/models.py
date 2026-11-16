@@ -18,6 +18,11 @@ def utc(value=None):
     )
 
 
+def validate_audit_retention(value):
+    if type(value) is not int or not 1 <= value <= 3650:
+        raise ValueError("audit retention must be an integer from 1 to 3650 days")
+
+
 class ControlError(Exception):
     def __init__(self, status, code, message):
         self.status, self.code, self.message = status, code, message
@@ -120,8 +125,10 @@ class Settings:
     capacity_token_id: str = ""
     capacity_token_secret: str = field(default="", repr=False)
     capacity_role: str = "HomelabMetrics"
+    audit_retention_days: int = 90
 
     def __post_init__(self):
+        validate_audit_retention(self.audit_retention_days)
         for address, allow_path in (
             (self.origin, False),
             (self.pve_url, False),
@@ -181,4 +188,5 @@ class Settings:
             capacity_token_id=os.getenv("PVE_CAPACITY_TOKEN_ID", ""),
             capacity_token_secret=os.getenv("PVE_CAPACITY_TOKEN_SECRET", ""),
             capacity_role=os.getenv("PVE_CAPACITY_ROLE", "HomelabMetrics"),
+            audit_retention_days=int(os.getenv("CONTROL_AUDIT_RETENTION_DAYS", "90")),
         )

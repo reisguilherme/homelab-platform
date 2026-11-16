@@ -6,8 +6,10 @@ verificados. No bootstrap abaixo, ainda não havia Docker ou aplicações.
 Depois, o HD de 18 TB foi entregue ao core, NFS RO foi aplicado e Jellyfin
 foi aceito privadamente na playback. A etapa de governança criou uma quarta
 VM, `homelab-control`, e reduziu o core de 6 para 4 GiB após medição, mantendo
-11 GiB totais de guests. Sua base e nginx TLS estão operantes; API/portal e
-Grafana ainda não foram implantados. Consulte
+11 GiB totais de guests. Base, nginx TLS, API/portal, Prometheus e Grafana estão
+operantes; os ensaios reais e os limites atuais estão registrados no runbook
+de governança. A manutenção periódica do journal foi implementada no código,
+mas ainda aguarda implantação e aceite na VM. Consulte
 [storage](storage-core-handoff.md) e [governança](platform-governance.md).
 Publicação, demais aplicações, GPU e recuperação USB permanecem pendentes.
 

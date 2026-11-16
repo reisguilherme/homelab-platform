@@ -10,7 +10,9 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-from .models import require, utc
+from .models import require, utc, validate_audit_retention
+
+MAINTENANCE_BATCH_SIZE = 500
 
 
 def fingerprint(value):
@@ -23,6 +25,14 @@ class OperationStore:
     def __init__(self, path, clock=time.time):
         self.clock = clock
         self.lock = threading.RLock()
+        self._maintenance = {
+            "lastAttemptAt": None,
+            "lastSuccessAt": None,
+            "lastOutcome": "not_run",
+            "eventsDeleted": 0,
+            "intentsDeleted": 0,
+            "failures": 0,
+        }
         path = Path(path)
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.db = sqlite3.connect(path, timeout=5, isolation_level=None, check_same_thread=False)
@@ -44,6 +54,8 @@ class OperationStore:
                 id TEXT PRIMARY KEY, actor TEXT NOT NULL, target INTEGER NOT NULL,
                 name TEXT NOT NULL, digest TEXT NOT NULL, expires REAL NOT NULL,
                 consumed INTEGER NOT NULL);
+            CREATE INDEX IF NOT EXISTS events_created ON events(created,id);
+            CREATE INDEX IF NOT EXISTS intents_expires ON intents(expires,id);
         """)
         # An accepted record after process death may already have reached PVE. Never replay it.
         with self.transaction():
@@ -62,6 +74,43 @@ class OperationStore:
             except BaseException:
                 self.db.execute("ROLLBACK")
                 raise
+
+    def maintain(self, retention_days=90):
+        """Prune one bounded batch without releasing operations or idempotency keys."""
+        validate_audit_retention(retention_days)
+        with self.lock:
+            now = self.clock()
+            self._maintenance.update(lastAttemptAt=utc(now), eventsDeleted=0, intentsDeleted=0)
+            try:
+                with self.transaction():
+                    events = self.db.execute(
+                        "DELETE FROM events WHERE id IN ("
+                        "SELECT e.id FROM events e JOIN operations o ON o.id=e.operation_id "
+                        "WHERE e.created<? AND o.state IN ('succeeded','failed') "
+                        "ORDER BY e.created,e.id LIMIT ?)",
+                        (now - retention_days * 86400, MAINTENANCE_BATCH_SIZE),
+                    ).rowcount
+                    intents = self.db.execute(
+                        "DELETE FROM intents WHERE id IN ("
+                        "SELECT id FROM intents WHERE expires<=? ORDER BY expires,id LIMIT ?)",
+                        (now, MAINTENANCE_BATCH_SIZE - events),
+                    ).rowcount
+            except Exception:
+                self._maintenance["lastOutcome"] = "failed"
+                self._maintenance["failures"] += 1
+                raise
+            self._maintenance.update(
+                lastOutcome="succeeded",
+                lastSuccessAt=utc(self.clock()),
+                eventsDeleted=events,
+                intentsDeleted=intents,
+            )
+            return self.maintenance_status()
+
+    def maintenance_status(self):
+        """Process-local counters only: no actors, keys, parameters or database errors."""
+        with self.lock:
+            return dict(self._maintenance)
 
     def existing(self, actor, key, action, target, parameters):
         require(
@@ -160,7 +209,6 @@ class OperationStore:
     def preview(self, actor, target, name, digest):
         identifier, expiry = secrets.token_urlsafe(24), self.clock() + 300
         with self.transaction():
-            self.db.execute("DELETE FROM intents WHERE expires<?", (self.clock(),))
             self.db.execute(
                 "INSERT INTO intents VALUES(?,?,?,?,?,?,0)",
                 (identifier, actor, target, name, digest, expiry),

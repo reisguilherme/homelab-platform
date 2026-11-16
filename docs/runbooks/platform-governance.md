@@ -75,8 +75,60 @@ e recursos fora dos perfis permitidos; não é um editor genérico de hardware.
 Resposta 202 ou UPID representa uma solicitação em andamento. Confirmar tarefa
 e estado observado antes de concluir. Timeout não autoriza nova intenção;
 reconciliar a mesma chave. Criação sem resultado rastreável bloqueia novas
-alocações no nó até prova ou investigação. O registro SQLite ainda não possui
-poda automática: acompanhar espaço, sem confundir histórico local com backup.
+alocações no nó até prova ou investigação. A manutenção de SQLite descrita
+abaixo está implementada no código, mas ainda não foi implantada nem aceita
+na VM. Acompanhar espaço, sem confundir histórico local com backup.
+
+## Manutenção do journal SQLite
+
+O código usa o mesmo `OperationStore`, conexão, lock e transação da API.
+O único processo/worker inicia um lote na abertura da aplicação e espera
+3.600 segundos após cada tentativa para o próximo. Não há serviço ou
+agendador adicional no host. No encerramento, a tarefa periódica é cancelada;
+se um lote já começou, a API espera sua transação terminar antes de sair.
+
+- `CONTROL_AUDIT_RETENTION_DAYS` define a idade dos eventos, com default de
+  **90 dias** e valores inteiros de **1 a 3.650 dias**. Configuração fora dos
+  limites impede a inicialização; o Compose transmite o valor do `.env` privado.
+- Só são apagados eventos estritamente anteriores ao corte e cuja operação
+  esteja em `succeeded` ou `failed`. Eventos de operações não resolvidas,
+  ausentes ou sem vínculo permanecem. Todas as operações e suas chaves de
+  idempotência permanecem, mesmo quando o histórico de eventos foi podado.
+- Cada tentativa remove no máximo **500 linhas no total**: primeiro eventos
+  elegíveis, depois prévias de exclusão expiradas usando o saldo do lote.
+  Prévias ainda válidas continuam utilizáveis; não há limpeza ilimitada no
+  caminho de criação de prévias. Um acúmulo exige vários ciclos para escoar.
+- Falha reverte o lote inteiro, registra aviso sem detalhes privados e deixa
+  a próxima tentativa para o intervalo normal. Nenhuma falha dispensa o commit
+  durável de uma intenção antes de mutação no Proxmox.
+
+`GET /api/v1/audit/maintenance` exige sessão autenticada e retorna somente
+limites, resultado/horários da última tentativa, horário do último sucesso,
+quantidades removidas nessa tentativa e número de falhas no processo.
+Não contém atores, parâmetros, chaves ou mensagens SQLite. Esses dados ficam
+em memória e reiniciam com a API; `not_run` indica que ainda não houve execução.
+O endpoint é de leitura, sem comando manual de poda.
+
+Não há `VACUUM` automático, exclusão de operações nem limite rígido para o
+tamanho do banco. As páginas liberadas podem ser reutilizadas pelo SQLite,
+mas a poda não promete reduzir o arquivo no filesystem. Continuar medindo
+espaço e crescimento de operações e eventos não resolvidos. A retenção de
+sete dias/4 GiB do Prometheus é independente deste journal.
+
+Antes de implantar esta alteração, revisar o diff e executar os checks locais
+em Linux/Python 3.12 com fixtures temporárias:
+
+```bash
+uv run --frozen pytest
+uv run --frozen ruff check scripts services tests
+uv run --frozen ruff format --check scripts services tests
+docker compose --env-file .env.example -f compose.control.yaml config --quiet
+```
+
+O `.env.example` só valida a renderização do Compose; seus placeholders não
+servem para ativação. Após uma implantação autorizada, conferir a configuração
+efetiva, autenticação do resumo, primeiro ciclo e consumo de disco. Os testes
+locais não comprovam manutenção no banco real nem substituem esse aceite.
 
 ## Ensaios reais concluídos
 
@@ -106,8 +158,9 @@ poda automática: acompanhar espaço, sem confundir histórico local com backup.
 
 - Ensaiar shutdown/reboot ACPI pelo portal em guest com SO; o start/stop da
   VM hardware-only não cobre esses caminhos.
-- Medir consumo sob carga e definir manutenção de SQLite antes de crescimento
-  sustentado. Retenção de sete dias/4 GiB é do Prometheus, não da auditoria.
+- Revisar e implantar a manutenção de SQLite descrita acima, conferir seu
+  primeiro ciclo no controle e medir consumo sob carga. O código e os testes
+  locais ainda não constituem aceite operacional da poda.
 - Manter investigação manual de resultado ambíguo sem UPID/prova suficiente,
   sem reenviar intenção. Falhas de timeout e concorrência têm testes sintéticos;
   não foram todas induzidas no Proxmox real.
