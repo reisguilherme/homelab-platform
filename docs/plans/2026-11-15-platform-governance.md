@@ -275,7 +275,8 @@ nunca calcula autorização como autoridade e não interpola dados em innerHTML.
 - [ ] Medir consumo sob carga. Canal
   externo e sonda independente permanecem pendentes de integração e teste.
 - [x] Registrar resultados e limites no estado de implementação.
-- [ ] Publicar na branch refactor após revisão de segredos, testes e diff.
+- [x] Publicado na branch `refactor` em `a8f1c7305afdff5146a6d6e39253e1beac15bf81`,
+  após revisão de segredos, testes e diff.
 
 ## 6. Limites remanescentes
 

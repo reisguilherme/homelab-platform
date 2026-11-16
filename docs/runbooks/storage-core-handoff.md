@@ -151,7 +151,7 @@ continuar montado quando o servidor ou seu HD desaparece; nesse caso, a
 dependência não detecta a perda de saúde nem implementa reintegração
 automática. O consumidor precisa conferir a identidade e o modo RO do mount,
 conter scans e coordenar sua retomada. Restauração, configuração e aceites da
-aplicação ficam no [runbook de playback do serviço de mídia](https://github.com/reisguilherme/homelab-mediaserver/blob/2ac092cdb3f6e57e26505fc123f13f21d87cf141/docs/runbooks/playback-nfs.md).
+aplicação ficam no [runbook de playback do serviço de mídia](https://github.com/reisguilherme/homelab-mediaserver/blob/fc9a560c613431a0d95b4fb4beb5726792b62750/docs/runbooks/playback-nfs.md).
 
 ## Disco dedicado para transcode
 

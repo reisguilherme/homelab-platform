@@ -113,7 +113,9 @@ poda automática: acompanhar espaço, sem confundir histórico local com backup.
   não foram todas induzidas no Proxmox real.
 - Escolher/testar canal externo e sonda fora do host. Reboot do controle e
   console independente não demonstram HA ou recuperação de falha do USB.
-- Publicar código/documentação após revisão e verificações pertinentes.
+- Em novas alterações, repetir revisão e verificações pertinentes antes da
+  publicação. Esta entrega foi publicada na branch `refactor`, no commit
+  `a8f1c7305afdff5146a6d6e39253e1beac15bf81`.
 
 Publicação de mídia, gestão LAN, GPU, recuperação física do USB, nobreak e
 consolidação seguem pendentes. Esta etapa não altera a decisão do proprietário

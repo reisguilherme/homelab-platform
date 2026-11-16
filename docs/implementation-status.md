@@ -48,12 +48,16 @@ verificados.** Consulte
 
 O catálogo inicial registra a integração de métricas de mídia como `proposed`;
 o exporter ainda não está ativo. `media-playback` está registrada como `deployed`
-no commit `2ac092cdb3f6e57e26505fc123f13f21d87cf141`, com contrato e Compose
+no commit `fc9a560c613431a0d95b4fb4beb5726792b62750`, com contrato e Compose
 próprios no consumidor e aceite privado limitado ao descrito abaixo. O
 contrato do exporter não certifica o restante da stack de mídia, e validar um
 contrato não comprova implantação nem isolamento em runtime.
 
 ## Plataforma de controle
+
+API, portal, observabilidade e configuração pública desta etapa foram
+publicados na branch `refactor`, no commit
+`a8f1c7305afdff5146a6d6e39253e1beac15bf81`.
 
 A VM **homelab-control** foi criada de imagem Ubuntu com hash previamente
 verificado: 2 vCPU, 2 GiB de RAM e disco virtual novo de 24 GiB, identificada
@@ -409,7 +413,7 @@ mantém a estratégia e os limites anteriores.
 ## Jellyfin na playback
 
 A etapa de aplicação usa o Compose independente do
-[projeto de mídia](https://github.com/reisguilherme/homelab-mediaserver/blob/2ac092cdb3f6e57e26505fc123f13f21d87cf141/docs/runbooks/playback-nfs.md).
+[projeto de mídia](https://github.com/reisguilherme/homelab-mediaserver/blob/fc9a560c613431a0d95b4fb4beb5726792b62750/docs/runbooks/playback-nfs.md).
 Docker e a imagem original Jellyfin 12.2, fixada por digest, foram instalados
 somente na playback. Configuração e cache foram selecionados do checkpoint
 final para o SSD do core e transferidos ao SSD da playback, com hash da
