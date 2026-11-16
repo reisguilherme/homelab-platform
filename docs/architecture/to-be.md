@@ -12,6 +12,10 @@ requer ensaio. Demais aplicações de mídia, consolidação, publicação,
 restrição da gestão LAN e recuperação USB continuam pendentes. Consulte o
 [estado da implementação](../implementation-status.md#plataforma-de-controle).
 
+O [mapa greis.dev.br](access-domains.md) acrescenta streaming público e os nomes
+administrativos privados. DNS/TLS/entrada ainda serão aplicados. A prioridade
+atual é [core e acervo no HD de 18 TB](operational-priorities-2026-11-16.md).
+
 ## Fronteira entre plataforma e consumidor
 
 A plataforma possui o desenho de Proxmox, rede, storage físico/exports e

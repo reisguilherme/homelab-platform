@@ -25,7 +25,8 @@ integral final não foi feito. Segunda cópia e novo ensaio integral deixaram
 de ser pré-requisitos desta instalação. O desligamento limpo e a sobrescrita
 somente do SSD de sistema da ficha privada foram autorizados; preservar o
 segundo SSD e os USBs. As três VMs base estão em execução, com rede privada
-filtrada e autostart conferido após reboot; o segundo SSD permanece desmontado.
+filtrada e autostart conferido após reboot; o segundo SSD foi preservado e agora
+está em inspeção block-RO/ro,noload, junto dos HDs de origem de 1 TB e 4 TB.
 O HD de 18 TB foi depois reconectado e entregue ao core, com mídia NFS RO para
 playback. O [estado atual](../implementation-status.md#storage-no-core-e-nfs-ro)
 registra as provas de rede e leitura/escrita em fixture. Restauração das demais
@@ -42,12 +43,19 @@ reservado à plataforma. `homelab-control` já foi criada com 2 vCPU, 2 GiB e
 TLS estão operantes, com API/portal, Prometheus e Grafana implantados. CRUD/ACL,
 TOTP, seis targets ativos, falha/resolução de coleta e reboot do controle
 passaram em ensaios reais. Portal e 22 painéis tiveram aceite visual em
-desktop/mobile. A auditoria é durável, mas não tem poda automática. O
+desktop/mobile. A auditoria recebeu manutenção horária com retenção limitada,
+preservando operações/chaves e evidências não resolvidas. ACPI via API em guest
+com SO passou; o dashboard tem agora 25 painéis provisionados, com revisão visual
+anterior dos 22. Coletor de playback e alerta de frescor foram ensaiados. O
 [plano concreto](../plans/2026-11-15-platform-governance.md) define rotas,
 identidade delegada, auditoria, dashboard e ensaios; o
 [estado atual](../implementation-status.md) continua sendo a fonte dos aceites
 aplicados. Jellyfin privado e transcode SSD já possuem evidência específica;
 isso não restaura toda a automação nem encerra os demais gaps.
+
+O [registro de prioridades](operational-priorities-2026-11-16.md) mantém core e
+consolidação primeiro. O [mapa de domínios](access-domains.md) incorpora
+`greis.dev.br` sem afirmar DNS/TLS ou acesso público implantados.
 
 ## 1. Gaps priorizados
 
@@ -72,8 +80,8 @@ isso não restaura toda a automação nem encerra os demais gaps.
 | G17 | P3, quando houver benefício | Compose de instância única → K3s seletivo | PV/afinidade/NetworkPolicy/segredos/healthchecks funcionam; control plane e workloads distribuídos por falhas físicas; sem migração massiva obrigatória |
 | G18 | P3, réplicas de controle | SQLite/WAL/arquivos locais → coordenação distribuída | Banco servidor, idempotência, lease/fencing, claims e capacidade transacionais; matar/reiniciar líder não duplica aquisição nem exclusão |
 | G19 | P0, fronteira destrutiva | Administrador validado pelo Jellyfin → autorização independente no core | Playback simulada como comprometida não consegue fabricar autorização de exclusão; origem/cookies separados, CSRF e confirmação privada de intenção verificados |
-| G20 | P1, aplicado parcialmente | API/portal privados; 14 checks reais de CRUD/ACL/recursos, oito operações concluídas, cinco checks TOTP, reboot e navegação aceitos | Ensaiar shutdown/reboot ACPI pelo portal em guest com SO; preservar ACLs, provas de tarefa e coordenação externa; timeout/reconciliação têm cobertura sintética, sem UPID pode exigir intervenção manual |
-| G21 | P1, aplicado parcialmente | Prometheus/Grafana com seis targets ativos, 22 painéis verificados no navegador, auditoria persistida e alerta/resolução reais | Medir carga; implementar manutenção/retenção SQLite; canal externo e sonda independente continuam sem aceite |
+| G20 | P1, aplicado parcialmente | API/portal privados; CRUD/ACL/recursos/TOTP, navegação e shutdown/reboot/start via API em guest com SO aceitos | Acrescentar visão/controle de serviços por VM e melhorar o portal; preservar ACLs, provas de tarefa e coordenação externa; reconciliação sem UPID pode exigir intervenção manual |
+| G21 | P1, aplicado parcialmente | Seis targets, 25 painéis por API (22 revisados visualmente), manutenção SQLite e alertas de coleta/frescor disparados/resolvidos | Medir carga, revisar três painéis novos e apresentar discos físicos; alertas externos adiados pelo proprietário; sonda independente sem aceite |
 | G22 | P0, continuidade de energia | HD perde AC enquanto compute segue na bateria → alimentação e parada coordenadas | Nobreak pendente dimensionado por carga/autonomia reais; HD energizado durante flush, consumidores param antes do core/host, retorno e perda de comunicação ensaiados; risco residual explícito enquanto não adquirido |
 | G23 | P0, migração USB/NFS | Recuperação local opt-in → coordenação Proxmox/core/clientes | Confirmar instalação atual sem presumir ativação; host/guest identificam mesmo disco, exports não servem fallback, clientes revalidam, pausas mantidas e falha repetida não libera geração antiga |
 | G24 | P0, retomada segura | Presença/tamanho e chamadas bloqueáveis → prova de dados e watchdog | Corrupção sintética de mesmo tamanho detectada no conjunto em risco; ausência de prova mantém tarefas afetadas paradas; I/O bloqueado gera alerta sem force-unmount ou restart infinito |

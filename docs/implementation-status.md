@@ -7,7 +7,8 @@ acessível pela rede privada está concluída.** Identidade SSH, sessão com cha
 dedicada e HTTPS foram conferidos. Depois, core, playback e edge foram criadas
 com Ubuntu 24.04, QGA, SSH e NTP operantes. A rede privada com NAT sem DNAT e
 filtros dos convidados passou pelos testes TCP e de pacotes registrados abaixo.
-O segundo SSD está desmontado com o mesmo UUID ext4 anterior. Autostart
+O segundo SSD foi preservado com o mesmo UUID ext4 anterior e agora está
+montado somente leitura para inspeção, conforme a atualização abaixo. Autostart
 ordenado, acesso e filtros foram conferidos após reboot. Na etapa posterior,
 o HD de 18 TB foi entregue exclusivamente ao core, com mount preservado e NFS
 RO para playback. Configuração e cache do Jellyfin foram restaurados e
@@ -36,8 +37,8 @@ verificados.** Consulte
 |---|---|---|
 | Arquitetura | Documentação geral canônica, diagramas e gaps | Aceite físico das hipóteses de isolamento e capacidade |
 | Integração | Schemas, template, validador local e catálogo por commit | Conformidade dos manifests e permissões efetivas por projeto |
-| Governança | API/portal privados implantados; 14 checks reais de CRUD/ACL/recursos/negações, 8 operações concluídas e 5 checks de TOTP; VM de teste removida; reboot e navegação reais aceitos | Shutdown/reboot ACPI em guest com SO e retenção SQLite; reconciliação ambígua exige investigação |
-| Observabilidade | Prometheus/Grafana implantados; 6 targets ativos, 22 painéis verificados no navegador, falha e resolução de coleta ensaiadas | Consumo sob carga, entrega externa e sonda independente do host |
+| Governança | API/portal privados; CRUD/ACL/recursos/TOTP aceitos; shutdown/reboot/start via API em guest com SO comprovados; manutenção SQLite implantada | Controle de serviços dentro dos guests, melhoria visual e reconciliação ambígua |
+| Observabilidade | Seis targets ativos; 25 painéis provisionados por API (22 com revisão visual anterior); sinais Jellyfin/lease/frescor e alerta de coletor obsoleto disparado/resolvido | Revisão visual dos três painéis novos, consumo sob carga e sonda independente; canal externo adiado pelo proprietário |
 | Host Proxmox | Instalação no SSD autorizado, inventário e acesso privado SSH/HTTPS verificados; `vmbr0` preservada | Restringir gestão na LAN; o firewall do host mantém `enable: 0` |
 | VMs base | Três VMs de mídia e homelab-control; QGA/SSH e cloud-init conferidos; core reduzido para 4 GiB, mantendo 11 GiB totais; reboot do controle aceito com autostart em ordem 5 | Capacidade sob carga; reboot isolado do controle não demonstra novo reboot integral do host |
 | Rede dos convidados | Bridge privada, NAT sem DNAT, firewall legado ativo; provas TCP/pacotes e persistência dos filtros após reboot conferidas | Revisão da WAN dinâmica, restrição da gestão LAN e aceite dos fluxos de aplicações |
@@ -52,6 +53,63 @@ no commit `fc9a560c613431a0d95b4fb4beb5726792b62750`, com contrato e Compose
 próprios no consumidor e aceite privado limitado ao descrito abaixo. O
 contrato do exporter não certifica o restante da stack de mídia, e validar um
 contrato não comprova implantação nem isolamento em runtime.
+
+## Continuidade operacional de 16/11
+
+A prioridade é [concluir core e consolidação](architecture/operational-priorities-2026-11-16.md).
+O [mapa greis.dev.br](architecture/access-domains.md) foi documentado: streaming
+público e administração privada. DNS, TLS dos nomes e entrada pública ainda
+não foram aplicados. Alertas ficam somente no painel por decisão do proprietário.
+Inventário visual de discos, controles por serviço e melhoria do portal seguem
+pendentes, sem bloquear a recuperação do acervo.
+
+- **Tampa:** drop-in do logind aplicado sem reboot; quatro observações em 30 s
+  com a tampa fisicamente fechada confirmaram SSH e quatro VMs disponíveis, sem
+  suspensão. Persistência após reboot do host ainda não foi ensaiada. Ver
+  [procedimento](runbooks/notebook-lid.md).
+- **USB:** retorno assistido após suspensão/reconexão, com parada normal do
+  consumidor, NFS e ext4, shutdown limpo do core e conferência física antes do
+  retorno do mesmo passthrough. Backup, catálogo e mídia RO preservados. Não
+  houve formatação, force-unmount ou reparo; reintegração automática não foi provada.
+- **Storage:** correção de resultados definitivos e reconciliação explícita de
+  publicação implantadas. Exige HOLD, nenhum probe pendente, processo terminado,
+  lock/journal/identidade/lease expirada e recibo durável. Tempo decorrido não
+  libera trabalho. Após readmissão explícita, 135 s atravessaram o cron, com nove
+  renovações e sem HOLD indevido.
+- **ACPI:** reboot, shutdown e start da edge com SO passaram pela API, com UPID,
+  estados, mudança de boot e chave SSH preservada. Uma consulta transitória 503
+  não levou à repetição da mutação; a mesma operação reconciliou para sucesso.
+  Conta, papel e ACL temporários foram revogados. Não foi ensaio por clique na UI.
+- **Auditoria:** manutenção horária, 90 dias, lote de 500, orçamento de lock de
+  5 s e SQL de 2 s. Primeira execução removeu uma intenção expirada e nenhum
+  evento; as nove operações anteriores ficaram idênticas e `quick_check` passou.
+  Todas as operações/chaves e evidências não resolvidas são preservadas, sem
+  VACUUM automático. Após os ensaios havia 12 operações e 50 eventos.
+- **Playback:** coletor restrito mede HTTP de saúde, lease e frescor sem
+  credenciais ou acesso ao acervo. Três painéis/regras novos provisionados e
+  consultas/fixtures promtool conferidas. Pausar só o coletor fez
+  `PlaybackCollectorStale` atingir firing; restaurá-lo resolveu o alerta, com
+  Jellyfin/admissão em 1 e seis targets ativos. HOLD real anterior gerou métrica
+  0 e alertas pending; não durou para provar firing desses dois alertas no servidor.
+- **Origens:** HDs de 4 TB/1 TB e SSD preservado identificados, block-RO e
+  `ro,noload` no Proxmox, dentro da autorização específica. Todos indicam journal
+  pendente; sem replay, reparo ou cópia nesta inspeção. O Seagate registra 8
+  setores pendentes, 8 offline não corrigíveis, 14 erros reportados e limiar
+  histórico de temperatura. Avaliar o que já está preservado antes de novas
+  leituras intensivas; SMART geral aprovado não comprova integridade.
+- **Core:** Docker/Compose instalados, zero containers. Sete árvores restauradas
+  para staging SSD privado novo: 23.566.307.737 bytes, 8.676 arquivos, 718
+  diretórios e três links de logs permitidos. Manifesto fixado, hashes dos
+  arquivos selecionados e metadados conferidos; não foi repetido o hash integral
+  do TAR. Auditoria offline dos seis bancos, incluindo cópia dos sidecars, passou
+  em `quick_check`; configuração qBit também foi fingerprintada. Nenhum app do
+  core foi readmitido. Tarefas nativas continuam exigindo contenção por versão;
+  simples restauração e presença de banco não comprovam inicialização segura.
+
+A medição antes da restauração encontrou 5,65 GiB disponíveis e zero swap no
+host, com 11 GiB configurados nas VMs. A [tabela de memória](architecture/operational-priorities-2026-11-16.md)
+separa RSS do host e memória disponível nos guests. Arr e workers ainda parados
+impedem tratar a amostra como aceite de carga completa.
 
 ## Plataforma de controle
 
@@ -156,14 +214,12 @@ atômica. Prévia e revalidação reduzem a janela de concorrência, sem elimin�
 Coordenar essas mudanças com o console. Criação inicial entrega hardware
 desligado e sem NIC; SO, rede e operações avançadas continuam no Proxmox.
 
-G20/G21 foram atendidos parcialmente pelos ensaios acima. Permanecem pendentes
-shutdown/reboot ACPI pelo portal em guest com SO e medição
-sob carga. A auditoria SQLite não tem poda/retenção
-automática implementada; acompanhar sua ocupação. Uma
+G20/G21 foram atendidos parcialmente pelos ensaios acima e pela continuidade
+registrada nesta página. ACPI via API e retenção já foram implantados/ensaiados;
+medição sob carga, controles por serviço e revisão visual continuam pendentes. Uma
 criação sem resultado rastreável não libera repetição: permanece em
 reconciliação e bloqueia novas alocações no nó até prova ou investigação.
-Reconciliação sem UPID pode exigir intervenção manual. A publicação desta
-entrega no repositório ainda está pendente. USB, nobreak, entrada pública,
+Reconciliação sem UPID pode exigir intervenção manual. USB, nobreak, entrada pública,
 automação Arr, GPU e HA conservam seus aceites próprios.
 
 ## Checkpoints anteriores à instalação

@@ -60,12 +60,20 @@ próprios; o catálogo aponta para commits imutáveis e distingue proposta de ex
   estão operantes; exporters de nó estão nos quatro convidados. API, portal,
   Prometheus e Grafana foram implantados. CRUD, recursos, ACL, idempotência,
   negações de acesso e TOTP passaram em ensaio real descartável. Seis targets
-  estão ativos; 22 painéis foram provisionados. Falha e recuperação de coletor
+  estão ativos; 25 painéis foram provisionados (22 com revisão visual anterior). Falha e recuperação de coletor
   e exporter dispararam e resolveram os alertas locais. Reboot do controle
   preservou estado e coleta, invalidando a sessão anterior; seu autostart usa
   ordem 5, antes da mídia. Portal e Grafana passaram no navegador real em
-  desktop/mobile, com leitura sem mutações. Shutdown/reboot ACPI pelo portal
-  não foi ensaiado na VM descartável sem SO. SQLite não tem poda automática.
+  desktop/mobile, com leitura sem mutações. Shutdown/reboot/start via API foram
+  depois comprovados na edge com SO, UPID/boot/SSH; conta temporária revogada.
+  Manutenção SQLite horária conserva todas as operações/chaves e evidências não
+  resolvidas; poda eventos antigos elegíveis e intenções expiradas em lotes.
+  Coletor de playback mede saúde/lease/frescor; alerta obsoleto disparou e resolveu.
+  Tampa corrigida via logind e testada fisicamente por 30 s; sem reboot do host.
+  Retorno USB foi assistido, não automático. Três fontes foram autorizadas para
+  inspeção block-RO e ro,noload, sem replay/reparo; preservar esse escopo.
+  Docker está instalado no core, mas nenhuma aplicação foi readmitida. Core e
+  consolidação são prioridade; domínios greis.dev.br seguem desenho sem deploy.
   Seguir o [runbook de governança](docs/runbooks/platform-governance.md),
   distinguindo credencial de leitura das sessões humanas. Não tratar UI
   sintética, HTTPS ativo ou resposta 202 como operação concluída no Proxmox.

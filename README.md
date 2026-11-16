@@ -30,11 +30,18 @@ TLS. O core foi reduzido de 6 para 4 GiB após medição e parada limpa, mantend
 convidados. **API, portal, Prometheus e Grafana estão implantados com acesso
 privado por TLS.** CRUD, recursos, ACL, idempotência, negações de acesso e TOTP
 passaram em ensaios reais com contas e VM descartáveis. Os seis alvos de coleta
-estão ativos; 22 painéis foram provisionados e alertas de perda de fontes
+estão ativos; 25 painéis foram provisionados (22 com revisão visual anterior) e alertas de perda de fontes
 dispararam e resolveram no teste. O reboot do controle preservou auditoria,
 Grafana e coleta, invalidando a sessão anterior. Portal e dashboards passaram
 no navegador real, em desktop e mobile; não há alerta ativo na observação final.
-K3s é futuro. O [estado canônico](docs/implementation-status.md#plataforma-de-controle)
+ACPI via API em guest com SO e manutenção horária da auditoria SQLite também
+foram aceitos. O coletor de playback agora distingue saúde Jellyfin, admissão de
+storage e frescor; seu alerta de coleta obsoleta disparou e resolveu em ensaio.
+A correção da tampa passou no teste físico de 30 segundos. O retorno USB foi
+assistido; recuperação automática continua pendente. Os três discos de origem
+estão em inspeção RO sem replay do journal. Docker foi instalado no core, ainda
+sem aplicações readmitidas. A prioridade é [core e consolidação](docs/architecture/operational-priorities-2026-11-16.md).
+K3s é futuro. O [estado canônico](docs/implementation-status.md#continuidade-operacional-de-1611)
 registra o alcance das provas e os limites de operação.
 O [gerador de bootstrap](scripts/proxmox_bootstrap.py) produz um bundle offline,
 sem deploy; publicar arquivos não aplica alterações ao servidor.
@@ -66,6 +73,8 @@ flowchart TB
 | [Responsabilidade dos repositórios](docs/repositories.md) | Plataforma, consumidores, versões e autoridade operacional |
 | [Contrato de integração](docs/integration-contract.md) | Recursos, rede, storage, telemetria, segredos e recuperação |
 | [Observabilidade](docs/observability.md) | Grafana/Prometheus, alvos opt-in, diretórios e limites |
+| [Domínios greis.dev.br](docs/architecture/access-domains.md) | Streaming público e administração privada; desenho ainda sem DNS/TLS aplicados |
+| [Prioridades atuais](docs/architecture/operational-priorities-2026-11-16.md) | Core/acervo primeiro; discos, controles por serviço, UI e RAM registrados |
 | [Estado da implementação](docs/implementation-status.md) | O que existe no código e o que falta comprovar no servidor |
 | [Proxmox](infrastructure/proxmox/README.md) | Host, convidados e limites atuais de rede |
 | [Instalação assistida](docs/runbooks/proxmox-installation-handoff.md) | Histórico da preparação, instalação e reconexão privada verificada |
@@ -127,10 +136,10 @@ identificado e acessível por SSH/HTTPS está concluída, conforme o
 A captura final tem checksums conferidos no HD de 18 TB. O proprietário
 decidiu prosseguir com essa única cópia completa: a transferência Windows foi
 interrompida e está incompleta; novo ensaio integral não é pré-requisito para
-instalar. O segundo SSD mantém o UUID ext4 anterior e está desmontado. O HD
+instalar. O segundo SSD mantém o UUID ext4 anterior e está em inspeção RO sem replay. O HD
 de 18 TB foi reconectado e entregue ao core, com exportação de mídia RO para
 playback; o backup ficou fora do export. Docker e a imagem Jellyfin foram
-instalados somente na playback, com restauração selecionada da configuração
+instalados na playback, com restauração selecionada da configuração
 e do cache. Jellyfin está saudável com catálogo e usuários preservados,
 inclusive no reboot do perfil inicial. O transcode agora usa SSD dedicado;
 seu retorno após reboot foi conferido com readmissão explícita. Não há GPU entregue aos convidados
