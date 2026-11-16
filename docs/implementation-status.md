@@ -1,5 +1,14 @@
 # Estado da implementação
 
+## Entrada externa após resposta da operadora — 16/11/2026
+
+O proprietário informou que a operadora não libera portas nem IP fixo para
+cliente PF e propôs Tunnel público/Tailscale privado. A análise da política
+oficial descartou recomendar Tunnel público padrão para o vídeo do Jellyfin;
+foi proposta VPS com túnel restrito à edge, mantendo Tailscale para gestão.
+A escolha de VPS/custo está pendente; nenhum túnel, DNS ou firewall foi
+alterado nesta avaliação. Ver [domínios e acesso](architecture/access-domains.md).
+
 ## Cliente web Abyss — 16/11/2026
 
 O proprietário retomou a integração Abyss no Jellyfin da playback. CSS,

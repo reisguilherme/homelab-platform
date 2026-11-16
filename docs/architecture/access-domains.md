@@ -1,5 +1,35 @@
 # Domínios e acesso ao homelab
 
+**Nova informação do proprietário — 16/11/2026:** a operadora informou que
+não libera as portas nem IP fixo para cliente pessoa física. A orientação
+passou a ser avaliar acesso sem entrada pela conexão residencial: Jellyfin
+público e administração por Tailscale. Isso substitui a espera por liberação
+de 80/443 como próximo passo; nenhum novo túnel ou DNS foi aplicado.
+
+O Tunnel público padrão da Cloudflare não é a recomendação para transportar
+o vídeo do Jellyfin. A [documentação de roteamento](https://developers.cloudflare.com/tunnel/concepts/routing/)
+explicita que hostnames públicos nos planos Free, Pro e Business exigem um
+serviço pago específico para vídeo e arquivos grandes. A
+[política de vídeo](https://developers.cloudflare.com/fundamentals/reference/policies-compliances/delivering-videos-with-cloudflare/)
+distingue esse caso das rotas privadas. Desativar cache não transforma uma
+rota pública em privada.
+
+**Alternativa proposta, ainda sem contratação ou implantação:** VPS com HTTPS
+para `streaming.greis.dev.br`, encaminhando por túnel WireGuard para a entrada
+pública restrita da edge. A edge inicia o túnel de saída; a VPS não recebe
+rota para administração, core, Proxmox ou storage. Preservar o guard público
+do Jellyfin. O DNS pode continuar no Registro.br; se for migrado para
+Cloudflare, esse nome deve usar somente DNS, sem proxy de vídeo.
+
+Os nomes administrativos seguem pela entrada privada, com Tailscale, regras
+de acesso mínimas e DNS interno. A aceitação de uma VPS com mensalidade está
+pendente. A alternativa sem VPS é tornar também o Jellyfin privado, com
+clientes autorizados na VPN, conferindo suporte dos aparelhos e limites do
+plano antes de adotar. Nenhuma opção elimina o limite do upload residencial;
+a VPS adiciona custo de tráfego e deve ser dimensionada pelo uso de streaming.
+
+### Diagnóstico anterior à resposta da operadora
+
 **Atualização em 16/11/2026:** backend edge → playback e isolamento de rede
 comprovados; 33 checks do proxy passaram, incluindo login comum e negações admin.
 DNAT TCP 80/443 aplicado sem reload e HTTP 308 para HTTPS correto pela LAN.

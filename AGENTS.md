@@ -12,8 +12,12 @@ torrents continuam parados, um em `missingFiles`. Foram publicados 8.209 caminho
 e gatilhos Jellyfin contidos. Backend edge → playback:8096 e isolamento PVE
 foram comprovados; DNAT TCP 80/443 foi aplicado e 33 checks do proxy passaram.
 A publicação está em ativação, sem certificado TLS: 80/443 externas dão timeout;
-10443 temporária chega ao PVE e serve só ao diagnóstico. O proprietário priorizou
-resolver 80/443, sem DNS-01 ou 10443 em produção. Consulte o
+10443 temporária chega ao PVE e serve só ao diagnóstico. A operadora recusou
+liberação das portas/IP fixo para PF, conforme relato posterior do proprietário.
+Avaliar entrada por túnel e gestão via Tailscale; VPS pública é proposta pendente
+de escolha/custo. Não publicar vídeo pelo Tunnel público padrão da Cloudflare:
+ver análise em `docs/architecture/access-domains.md`. Nenhuma alternativa foi
+implantada; 10443 continua fora de produção. Consulte o
 [estado atual](docs/implementation-status.md); os relatos anteriores abaixo são
 históricos e não alteram os limites operacionais.
 
