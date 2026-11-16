@@ -1,0 +1,33 @@
+groups:
+  - name: homelab-playback
+    rules:
+      - alert: PlaybackJellyfinUnavailable
+        expr: homeserver_playback_jellyfin_up{job="guests",role="playback"} == 0 or absent(homeserver_playback_jellyfin_up{job="guests",role="playback"})
+        for: 1m
+        labels:
+          severity: warning
+          owner: homelab
+        annotations:
+          summary: Jellyfin indisponível ou sem observação
+          description: Conferir HTTP, admissão e idade da coleta na playback. Exporter acessível não comprova disponibilidade do Jellyfin; não retomar serviços automaticamente.
+          runbook_url: https://github.com/reisguilherme/homelab-mediaserver/blob/refactor/docs/runbooks/playback-health.md
+      - alert: PlaybackStorageAdmissionRefused
+        expr: homeserver_playback_storage_admitted{job="guests",role="playback"} == 0 or absent(homeserver_playback_storage_admitted{job="guests",role="playback"})
+        for: 1m
+        labels:
+          severity: warning
+          owner: homelab
+        annotations:
+          summary: Admissão de storage recusada ou sem observação
+          description: Conferir lease, HOLD, boot e coordenador de storage. Este alerta não concede admissão, prova integridade física ou remove parada manual.
+          runbook_url: https://github.com/reisguilherme/homelab-mediaserver/blob/refactor/docs/runbooks/playback-health.md
+      - alert: PlaybackCollectorStale
+        expr: (time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"} > 60) or (homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"} > time()) or absent(homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"})
+        for: 1m
+        labels:
+          severity: warning
+          owner: homelab
+        annotations:
+          summary: Observação de playback ausente ou inválida
+          description: Conferir timer, escrita textfile, exporter e relógio. Timestamp ausente, futuro ou com mais de 60 segundos não é evidência de saúde.
+          runbook_url: https://github.com/reisguilherme/homelab-mediaserver/blob/refactor/docs/runbooks/playback-health.md

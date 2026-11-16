@@ -1,0 +1,305 @@
+# Run from the repository root: promtool test rules tests/fixtures/playback-alerts.yml
+rule_files:
+- ../../deploy/observability/rules/playback.yml
+evaluation_interval: 30s
+tests:
+- name: healthy playback and exporter have no alerts
+  interval: 30s
+  input_series:
+  - &id001
+    series: up{job="guests",role="playback",instance="playback.fixture:9100"}
+    values: 1x8
+  - &id006
+    series: homeserver_playback_jellyfin_up{job="guests",role="playback",instance="playback.fixture:9100"}
+    values: 1x8
+  - &id002
+    series: homeserver_playback_storage_admitted{job="guests",role="playback",instance="playback.fixture:9100"}
+    values: 1x8
+  - &id003
+    series: homeserver_playback_observed_timestamp_seconds{job="guests",role="playback",instance="playback.fixture:9100"}
+    values: 0+30x8
+  - series: homeserver_playback_jellyfin_up{job="guests",role="core",instance="core.fixture:9100"}
+    values: '0x8'
+  alert_rule_test:
+  - eval_time: 2m
+    alertname: PlaybackJellyfinUnavailable
+    exp_alerts: []
+  - eval_time: 2m
+    alertname: PlaybackStorageAdmissionRefused
+    exp_alerts: []
+  - eval_time: 2m
+    alertname: PlaybackCollectorStale
+    exp_alerts: []
+  promql_expr_test:
+  - expr: homeserver_playback_jellyfin_up{job="guests",role="playback"} and on(job,instance) (time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+      <= 60) and on(job,instance) (time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+      >= 0) and on(job,instance) (up{job="guests",role="playback"} == 1)
+    eval_time: 2m
+    exp_samples:
+    - labels: homeserver_playback_jellyfin_up{instance="playback.fixture:9100",job="guests",role="playback"}
+      value: 1
+  - expr: homeserver_playback_storage_admitted{job="guests",role="playback"} and on(job,instance) (time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+      <= 60) and on(job,instance) (time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+      >= 0) and on(job,instance) (up{job="guests",role="playback"} == 1)
+    eval_time: 2m
+    exp_samples:
+    - labels: homeserver_playback_storage_admitted{instance="playback.fixture:9100",job="guests",role="playback"}
+      value: 1
+  - expr: time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+    eval_time: 2m
+    exp_samples:
+    - labels: '{instance="playback.fixture:9100",job="guests",role="playback"}'
+      value: 0
+- name: HTTP unavailable although exporter and lease are healthy
+  interval: 30s
+  input_series:
+  - *id001
+  - series: homeserver_playback_jellyfin_up{job="guests",role="playback",instance="playback.fixture:9100"}
+    values: '0x8'
+  - *id002
+  - *id003
+  alert_rule_test:
+  - eval_time: 30s
+    alertname: PlaybackJellyfinUnavailable
+    exp_alerts: []
+  - eval_time: 1m
+    alertname: PlaybackJellyfinUnavailable
+    exp_alerts:
+    - exp_labels: &id004
+        job: guests
+        role: playback
+        instance: playback.fixture:9100
+        severity: warning
+        owner: homelab
+      exp_annotations: &id005
+        summary: Jellyfin indisponível ou sem observação
+        description: Conferir HTTP, admissão e idade da coleta na playback. Exporter acessível não comprova disponibilidade
+          do Jellyfin; não retomar serviços automaticamente.
+        runbook_url: https://github.com/reisguilherme/homelab-mediaserver/blob/refactor/docs/runbooks/playback-health.md
+  - eval_time: 2m
+    alertname: PlaybackStorageAdmissionRefused
+    exp_alerts: []
+  - eval_time: 2m
+    alertname: PlaybackCollectorStale
+    exp_alerts: []
+  promql_expr_test:
+  - expr: homeserver_playback_jellyfin_up{job="guests",role="playback"} and on(job,instance) (time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+      <= 60) and on(job,instance) (time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+      >= 0) and on(job,instance) (up{job="guests",role="playback"} == 1)
+    eval_time: 2m
+    exp_samples:
+    - labels: homeserver_playback_jellyfin_up{instance="playback.fixture:9100",job="guests",role="playback"}
+      value: 0
+  - expr: homeserver_playback_storage_admitted{job="guests",role="playback"} and on(job,instance) (time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+      <= 60) and on(job,instance) (time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+      >= 0) and on(job,instance) (up{job="guests",role="playback"} == 1)
+    eval_time: 2m
+    exp_samples:
+    - labels: homeserver_playback_storage_admitted{instance="playback.fixture:9100",job="guests",role="playback"}
+      value: 1
+  - expr: time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+    eval_time: 2m
+    exp_samples:
+    - labels: '{instance="playback.fixture:9100",job="guests",role="playback"}'
+      value: 0
+- name: expired or HOLD lease refuses service with reachable exporter
+  interval: 30s
+  input_series:
+  - *id001
+  - series: homeserver_playback_jellyfin_up{job="guests",role="playback",instance="playback.fixture:9100"}
+    values: '0x8'
+  - series: homeserver_playback_storage_admitted{job="guests",role="playback",instance="playback.fixture:9100"}
+    values: '0x8'
+  - *id003
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: PlaybackJellyfinUnavailable
+    exp_alerts:
+    - exp_labels: *id004
+      exp_annotations: *id005
+  - eval_time: 1m
+    alertname: PlaybackStorageAdmissionRefused
+    exp_alerts:
+    - exp_labels: *id004
+      exp_annotations: &id009
+        summary: Admissão de storage recusada ou sem observação
+        description: Conferir lease, HOLD, boot e coordenador de storage. Este alerta não concede admissão, prova
+          integridade física ou remove parada manual.
+        runbook_url: https://github.com/reisguilherme/homelab-mediaserver/blob/refactor/docs/runbooks/playback-health.md
+  - eval_time: 2m
+    alertname: PlaybackCollectorStale
+    exp_alerts: []
+  promql_expr_test:
+  - expr: homeserver_playback_jellyfin_up{job="guests",role="playback"} and on(job,instance) (time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+      <= 60) and on(job,instance) (time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+      >= 0) and on(job,instance) (up{job="guests",role="playback"} == 1)
+    eval_time: 2m
+    exp_samples:
+    - labels: homeserver_playback_jellyfin_up{instance="playback.fixture:9100",job="guests",role="playback"}
+      value: 0
+  - expr: homeserver_playback_storage_admitted{job="guests",role="playback"} and on(job,instance) (time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+      <= 60) and on(job,instance) (time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+      >= 0) and on(job,instance) (up{job="guests",role="playback"} == 1)
+    eval_time: 2m
+    exp_samples:
+    - labels: homeserver_playback_storage_admitted{instance="playback.fixture:9100",job="guests",role="playback"}
+      value: 0
+  - expr: time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+    eval_time: 2m
+    exp_samples:
+    - labels: '{instance="playback.fixture:9100",job="guests",role="playback"}'
+      value: 0
+- name: frozen successful textfile cannot stay healthy
+  interval: 30s
+  input_series:
+  - *id001
+  - *id006
+  - *id002
+  - series: homeserver_playback_observed_timestamp_seconds{job="guests",role="playback",instance="playback.fixture:9100"}
+    values: '0x8'
+  alert_rule_test:
+  - eval_time: 2m
+    alertname: PlaybackCollectorStale
+    exp_alerts: []
+  - eval_time: 2m30s
+    alertname: PlaybackCollectorStale
+    exp_alerts:
+    - exp_labels: *id004
+      exp_annotations: &id007
+        summary: Observação de playback ausente ou inválida
+        description: Conferir timer, escrita textfile, exporter e relógio. Timestamp ausente, futuro ou com mais
+          de 60 segundos não é evidência de saúde.
+        runbook_url: https://github.com/reisguilherme/homelab-mediaserver/blob/refactor/docs/runbooks/playback-health.md
+  promql_expr_test:
+  - expr: homeserver_playback_jellyfin_up{job="guests",role="playback"} and on(job,instance) (time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+      <= 60) and on(job,instance) (time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+      >= 0) and on(job,instance) (up{job="guests",role="playback"} == 1)
+    eval_time: 2m
+    exp_samples: []
+  - expr: homeserver_playback_storage_admitted{job="guests",role="playback"} and on(job,instance) (time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+      <= 60) and on(job,instance) (time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+      >= 0) and on(job,instance) (up{job="guests",role="playback"} == 1)
+    eval_time: 2m
+    exp_samples: []
+  - expr: time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+    eval_time: 2m
+    exp_samples:
+    - labels: '{instance="playback.fixture:9100",job="guests",role="playback"}'
+      value: 120
+- name: future observation cannot suppress stale alert
+  interval: 30s
+  input_series:
+  - *id001
+  - *id006
+  - *id002
+  - series: homeserver_playback_observed_timestamp_seconds{job="guests",role="playback",instance="playback.fixture:9100"}
+    values: 600x8
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: PlaybackCollectorStale
+    exp_alerts:
+    - exp_labels: *id004
+      exp_annotations: *id007
+  promql_expr_test:
+  - expr: homeserver_playback_jellyfin_up{job="guests",role="playback"} and on(job,instance) (time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+      <= 60) and on(job,instance) (time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+      >= 0) and on(job,instance) (up{job="guests",role="playback"} == 1)
+    eval_time: 1m
+    exp_samples: []
+  - expr: homeserver_playback_storage_admitted{job="guests",role="playback"} and on(job,instance) (time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+      <= 60) and on(job,instance) (time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+      >= 0) and on(job,instance) (up{job="guests",role="playback"} == 1)
+    eval_time: 1m
+    exp_samples: []
+  - expr: time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+    eval_time: 1m
+    exp_samples:
+    - labels: '{instance="playback.fixture:9100",job="guests",role="playback"}'
+      value: -540
+- name: absent consumer metrics are explicit even when exporter is up
+  interval: 30s
+  input_series:
+  - *id001
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: PlaybackJellyfinUnavailable
+    exp_alerts:
+    - exp_labels: &id008
+        job: guests
+        role: playback
+        severity: warning
+        owner: homelab
+      exp_annotations: *id005
+  - eval_time: 1m
+    alertname: PlaybackStorageAdmissionRefused
+    exp_alerts:
+    - exp_labels: *id008
+      exp_annotations: *id009
+  - eval_time: 1m
+    alertname: PlaybackCollectorStale
+    exp_alerts:
+    - exp_labels: *id008
+      exp_annotations: *id007
+  promql_expr_test:
+  - expr: homeserver_playback_jellyfin_up{job="guests",role="playback"} and on(job,instance) (time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+      <= 60) and on(job,instance) (time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+      >= 0) and on(job,instance) (up{job="guests",role="playback"} == 1)
+    eval_time: 1m
+    exp_samples: []
+  - expr: homeserver_playback_storage_admitted{job="guests",role="playback"} and on(job,instance) (time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+      <= 60) and on(job,instance) (time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+      >= 0) and on(job,instance) (up{job="guests",role="playback"} == 1)
+    eval_time: 1m
+    exp_samples: []
+  - expr: time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+    eval_time: 1m
+    exp_samples: []
+- name: fresh recovered evidence clears availability and admission alerts
+  interval: 30s
+  input_series:
+  - *id001
+  - series: homeserver_playback_jellyfin_up{job="guests",role="playback",instance="playback.fixture:9100"}
+    values: 0 0 0 1 1 1
+  - series: homeserver_playback_storage_admitted{job="guests",role="playback",instance="playback.fixture:9100"}
+    values: 0 0 0 1 1 1
+  - *id003
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: PlaybackJellyfinUnavailable
+    exp_alerts:
+    - exp_labels: *id004
+      exp_annotations: *id005
+  - eval_time: 1m
+    alertname: PlaybackStorageAdmissionRefused
+    exp_alerts:
+    - exp_labels: *id004
+      exp_annotations: *id009
+  - eval_time: 1m30s
+    alertname: PlaybackJellyfinUnavailable
+    exp_alerts: []
+  - eval_time: 1m30s
+    alertname: PlaybackStorageAdmissionRefused
+    exp_alerts: []
+  - eval_time: 1m30s
+    alertname: PlaybackCollectorStale
+    exp_alerts: []
+  promql_expr_test:
+  - expr: homeserver_playback_jellyfin_up{job="guests",role="playback"} and on(job,instance) (time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+      <= 60) and on(job,instance) (time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+      >= 0) and on(job,instance) (up{job="guests",role="playback"} == 1)
+    eval_time: 1m30s
+    exp_samples:
+    - labels: homeserver_playback_jellyfin_up{instance="playback.fixture:9100",job="guests",role="playback"}
+      value: 1
+  - expr: homeserver_playback_storage_admitted{job="guests",role="playback"} and on(job,instance) (time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+      <= 60) and on(job,instance) (time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+      >= 0) and on(job,instance) (up{job="guests",role="playback"} == 1)
+    eval_time: 1m30s
+    exp_samples:
+    - labels: homeserver_playback_storage_admitted{instance="playback.fixture:9100",job="guests",role="playback"}
+      value: 1
+  - expr: time() - homeserver_playback_observed_timestamp_seconds{job="guests",role="playback"}
+    eval_time: 1m30s
+    exp_samples:
+    - labels: '{instance="playback.fixture:9100",job="guests",role="playback"}'
+      value: 0
