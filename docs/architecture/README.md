@@ -45,6 +45,7 @@ NAS dedicado e K3s são evoluções condicionadas a recursos, contratos e ensaio
 | [Instalação assistida](../runbooks/proxmox-installation-handoff.md) | Histórico da passagem física e entrega do host com SSH/HTTPS verificados |
 | [Storage no core](../runbooks/storage-core-handoff.md) | HD preservado, export NFS RO e limites das provas de leitura/escrita |
 | [Governança privada](../runbooks/platform-governance.md) | Base entregue, aplicações pendentes e aceites por identidade/operação |
+| [Assistente de mídia](../superpowers/specs/2026-11-16-mediaserver-assistant-design.md) | Desenho Hermes + arr-mcp, privado, sem controles Proxmox no agente; implantação pendente |
 
 Os diagramas ficam em Mermaid junto ao texto. Não há cópia do HTML antigo nem
 dependência de um render local para ler esta arquitetura.
