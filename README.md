@@ -11,8 +11,12 @@ playback e edge têm QGA, SSH e NTP conferidos. A bridge de gestão foi preserva
 NAT sem DNAT e filtros dos convidados passaram pelos testes TCP e de pacotes
 registrados. O reboot confirmou autostart ordenado, acesso e persistência dos
 filtros. O HD de 18 TB pertence exclusivamente ao core; playback já lê mídia
-por NFS RO, com escrita negada em fixture. Restauração, aplicações, recuperação
-USB e publicação continuam pendentes.
+por NFS RO, com escrita negada em fixture. Docker e a imagem Jellyfin 12.2
+foram instalados na playback, com configuração e cache restaurados e
+conferidos. Jellyfin iniciou saudável; API autenticada, preservação do catálogo,
+leitura HTTP e decodificação por CPU passaram. O reboot da playback confirmou
+retorno automático do NFS RO, Docker e Jellyfin. Recuperação USB e publicação
+continuam pendentes; a automação de mídia permanece parada.
 Prometheus/Grafana estão preparados; K3s é futuro.
 O [gerador de bootstrap](scripts/proxmox_bootstrap.py) produz um bundle offline,
 sem deploy; publicar arquivos não aplica alterações ao servidor.
@@ -23,7 +27,9 @@ flowchart TB
   P --> C[Contratos e catálogo por commit]
   P --> O[Prometheus e Grafana privados]
   P --> I[Proxmox e três VMs / rede privada aplicada]
-  I -. próximos passos .-> S[Storage, aplicações e energia]
+  I --> S[Core com storage / playback com NFS RO]
+  S --> J[Jellyfin privado / mídia somente leitura]
+  S -. próximos aceites .-> R[Recuperação USB, publicação e energia]
   M[homelab-mediaserver] -->|declara integração| C
   M -->|exporter e dashboard de mídia| O
   F[Outros projetos: Immich etc.] -. contrato próprio .-> C
@@ -45,6 +51,7 @@ flowchart TB
 | [Instalação assistida](docs/runbooks/proxmox-installation-handoff.md) | Histórico da preparação, instalação e reconexão privada verificada |
 | [VMs e rede privada](docs/runbooks/proxmox-guests.md) | Estado real, testes, geração offline, preflight e aplicação controlada |
 | [Storage no core](docs/runbooks/storage-core-handoff.md) | Identidade do HD, mount preservado e NFS RO para playback; alcance dos testes |
+| [Jellyfin na playback](docs/implementation-status.md#jellyfin-na-playback) | Restauração selecionada, isolamento, aceites e limites da aplicação |
 | [K3s](infrastructure/k3s/README.md) | Entrada posterior e fronteira com o hipervisor |
 
 O [repositório de mídia](https://github.com/reisguilherme/homelab-mediaserver/tree/refactor)
@@ -81,9 +88,10 @@ aplica todas as políticas; essa revisão e o aceite de runtime são separados.
 4. Provisionar recursos/permissões e testar acesso, recuperação e rollback em
    janela autorizada. Só então registrar o aceite e o estado `deployed`.
 
-O primeiro consumidor é a integração privada de métricas do projeto de mídia.
-As unidades futuras de core e playback precisam de manifests segregados antes
-de declarar conformidade com o isolamento proposto.
+O primeiro contrato publicado foi a integração privada de métricas do projeto
+de mídia. A playback tem um contrato e Compose próprios no repositório
+consumidor; a automação do core ainda precisa da sua unidade segregada. O
+catálogo e o registro de runtime distinguem preparação e execução aceita.
 
 ## Limites operacionais
 
@@ -100,8 +108,11 @@ decidiu prosseguir com essa única cópia completa: a transferência Windows foi
 interrompida e está incompleta; novo ensaio integral não é pré-requisito para
 instalar. O segundo SSD mantém o UUID ext4 anterior e está desmontado. O HD
 de 18 TB foi reconectado e entregue ao core, com exportação de mídia RO para
-playback; o backup ficou fora do export. Aplicações, Docker e GPU ainda não
-foram implantados. O firewall legado
+playback; o backup ficou fora do export. Docker e a imagem Jellyfin foram
+instalados somente na playback, com restauração selecionada da configuração
+e do cache. Jellyfin está saudável com catálogo e usuários preservados,
+inclusive após reboot da playback. Não há GPU entregue aos convidados
+nem automação de mídia iniciada. O firewall legado
 dos convidados está ativo, mas o firewall do host mantém `enable: 0`; a
 restrição da gestão na LAN continua pendente. A inicialização
 isolada da mídia já foi examinada, com os limites do [registro de implementação](docs/implementation-status.md).

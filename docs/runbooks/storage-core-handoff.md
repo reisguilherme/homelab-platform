@@ -4,7 +4,9 @@ O proprietário autorizou o HD de 18 TB identificado na ficha privada para
 posse exclusiva pelo core: inspeção inicial somente leitura e montagem para
 escrita após conferência, preservando acervo e backup. Esta etapa aplicou o
 passthrough do dispositivo, o mount local e a exportação NFS de mídia RO.
-Aplicações, restauração e recuperação automática de USB continuam pendentes.
+A preparação posterior do Docker na playback está registrada abaixo. A
+restauração e a aplicação têm aceite próprio no repositório consumidor;
+recuperação automática de USB permanece pendente.
 
 ## Identidade e montagem local
 
@@ -79,10 +81,12 @@ flowchart LR
     EDGE[Edge: sem mount]
 ```
 
-O cliente está com `noauto`: sua montagem não é prometida no boot. A opção
-`hard` preserva a espera por respostas do servidor; uma falha pode bloquear
-I/O. A ordem de boot das VMs não substitui disponibilidade do NFS nem os
-guards de mount e de scans que as aplicações ainda precisam receber.
+Na entrega inicial, o cliente ficou com `noauto` e sem dependência de aplicação
+que solicitasse o mount. A preparação do Docker descrita abaixo acrescentou
+essa dependência, preservando a opção. `hard` mantém a espera por respostas
+do servidor; uma falha pode bloquear I/O. A ordem de boot das VMs não
+substitui disponibilidade do NFS nem os guards de mount e de scans do
+consumidor.
 
 ## Provas desta etapa
 
@@ -112,17 +116,49 @@ de reprodução.
 As [configurações de referência](../../infrastructure/storage/README.md)
 registram o escopo da plataforma; valores reais e evidências continuam privados.
 
+## Dependência de storage do Docker na playback
+
+Depois da entrega NFS, Docker foi instalado **somente na playback**. O
+[drop-in de referência](../../infrastructure/storage/docker-playback.storage.conf)
+foi aplicado à unit existente `docker.service` dentro dessa VM dedicada.
+Nenhuma unit foi criada no Proxmox.
+
+`RequiresMountsFor=/srv/media-view/media` acrescenta as dependências
+necessárias para solicitar e aguardar o mount, inclusive quando a entrada do
+`fstab` contém `noauto`. `BindsTo` e `After` referenciam
+`srv-media\x2dview-media.mount`, com o hífen do diretório escapado. Quando
+essa unit de mount deixa de estar ativa, a dependência também para o Docker.
+O vínculo afeta todo o daemon; não aplicar em um nó Docker compartilhado.
+[Semântica oficial de RequiresMountsFor e BindsTo](https://www.freedesktop.org/software/systemd/man/latest/systemd.unit.html#RequiresMountsFor=).
+
+A configuração aplicada foi relida e as dependências efetivas foram
+conferidas. `systemd-analyze verify` passou ao receber explicitamente a unit
+de mount gerada junto da unit Docker. Um restart do Docker ainda vazio
+também passou. Depois, o Jellyfin restaurado iniciou e o reboot da playback
+foi confirmado por mudança de boot ID: NFS RO, Docker e Jellyfin saudável
+retornaram automaticamente, mantendo `noauto` no `fstab`.
+
+O vínculo acompanha o estado da montagem no systemd. Um NFS `hard` pode
+continuar montado quando o servidor ou seu HD desaparece; nesse caso, a
+dependência não detecta a perda de saúde nem implementa reintegração
+automática. O consumidor precisa conferir a identidade e o modo RO do mount,
+conter scans e coordenar sua retomada. Restauração, configuração e aceites da
+aplicação ficam no [runbook de playback do serviço de mídia](https://github.com/reisguilherme/homelab-mediaserver/blob/2ac092cdb3f6e57e26505fc123f13f21d87cf141/docs/runbooks/playback-nfs.md).
+
 ## Limites e próxima etapa
 
-Essa entrega estabelece a leitura remota de mídia por um consumidor. Não
-instalou Docker, Jellyfin, automação ou GPU, não restaurou bancos/configurações
-e não concluiu a migração ou a verificação global do acervo. O núcleo ainda
-precisa de coordenação de falhas entre mount, export e aplicações; a playback
-precisa recusar mount ausente ou incorreto antes de iniciar e escanear.
+Essa entrega estabelece a leitura remota de mídia por um consumidor e
+registra a dependência de montagem do Docker instalado posteriormente na
+playback. O aceite posterior do Jellyfin, sua restauração selecionada, leitura
+HTTP, decode curto por CPU e guard de mount está no runbook do consumidor.
+Esses testes não comprovam automação, GPU ou conclusão da migração e da
+verificação global do acervo. O núcleo ainda precisa de coordenação de falhas
+entre mount, export e aplicações. Os scans permanecem suspensos com acervo parcial.
 
 Não reutilizar o recuperador local antigo sem adaptar essa coordenação.
-Falha/retorno físico do USB, nobreak, reprodução e comportamento das aplicações
-perante ausência de mídia continuam pendentes. Não há HA nem aceite de produção.
+Falha/retorno físico do USB, nobreak, reprodução em cliente externo, carga e
+comportamento das aplicações perante ausência física de mídia continuam
+pendentes. Não há HA nem aceite de produção.
 O backup final permanece somente no HD por decisão do proprietário, com os
 limites já registrados no [estado canônico](../implementation-status.md).
 Novos consumidores exigem permissões, orçamento e export próprios; esta

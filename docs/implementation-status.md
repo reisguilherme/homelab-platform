@@ -10,8 +10,12 @@ filtros dos convidados passou pelos testes TCP e de pacotes registrados abaixo.
 O segundo SSD está desmontado com o mesmo UUID ext4 anterior. Autostart
 ordenado, acesso e filtros foram conferidos após reboot. Na etapa posterior,
 o HD de 18 TB foi entregue exclusivamente ao core, com mount preservado e NFS
-RO para playback. Restrição da gestão LAN, restauração, aplicações e recuperação
-automática de USB continuam pendentes; a prontidão de produção
+RO para playback. Configuração e cache do Jellyfin foram restaurados e
+conferidos no core e na playback; Docker e a imagem foram instalados na
+playback. Jellyfin iniciou saudável, com API autenticada, catálogo preservado,
+leitura HTTP e decodificação por CPU conferidos. O reboot da playback confirmou
+retorno automático do NFS RO, Docker e Jellyfin. Restrição da gestão LAN e
+recuperação automática de USB continuam pendentes; a prontidão de produção
 permanece falsa. O
 [roteiro de instalação assistida](runbooks/proxmox-installation-handoff.md)
 preserva a preparação e a passagem realizadas.
@@ -24,15 +28,17 @@ preserva a preparação e a passagem realizadas.
 | Host Proxmox | Instalação no SSD autorizado, inventário e acesso privado SSH/HTTPS verificados; `vmbr0` preservada | Restringir gestão na LAN; o firewall do host mantém `enable: 0` |
 | VMs base | Core, playback e edge `running`, QGA/SSH/NTP operantes, cloud-init concluído; autostart ordenado conferido após reboot | Capacidade sob carga e prontidão das aplicações |
 | Rede dos convidados | Bridge privada, NAT sem DNAT, firewall legado ativo; provas TCP/pacotes e persistência dos filtros após reboot conferidas | Revisão da WAN dinâmica, restrição da gestão LAN e aceite dos fluxos de aplicações |
-| Aplicações | Ensaio histórico de mídia examinado; backup final selado e conferido no HD | Restaurar estado e validar retomada; sem Docker, apps ou GPU nos guests |
-| Hub de arquivos | HD exclusivo do core; NFS RO restrito à playback; negações de escrita e reboot do core conferidos, cliente remontado manualmente | Guards das aplicações, recuperação USB automática e consolidação verificada |
+| Aplicações | Jellyfin 12.2 saudável em Compose independente; API autenticada, catálogo, leitura HTTP e decodificação por CPU conferidos; retorno após reboot aceito | Login interativo, cliente externo e capacidade sob carga; automação e GPU ausentes |
+| Hub de arquivos | HD exclusivo do core; NFS RO restrito à playback; negações de escrita e reboot do core conferidos; guard de mount aceito; Docker exige NFS e retorno após reboot da playback passou | Recuperação USB automática e consolidação verificada |
 | Energia | Estados e regras de reintegração USB | Nobreak, comunicação, coordenação host/guest e teste de falhas |
 | K3s | Critérios de adoção e fronteiras | Recursos adicionais, implantação e contratos dos workloads |
 
-O catálogo inicial registra somente integrações com arquivos publicados e
-status `proposed`; não atesta serviço ativo. A integração de métricas de mídia
-é a primeira unidade. O contrato do exporter não certifica o restante da stack
-de mídia nem transforma Jellyfin em um processo isolado com volume somente leitura.
+O catálogo inicial registra a integração de métricas de mídia como `proposed`;
+o exporter ainda não está ativo. `media-playback` está registrada como `deployed`
+no commit `2ac092cdb3f6e57e26505fc123f13f21d87cf141`, com contrato e Compose
+próprios no consumidor e aceite privado limitado ao descrito abaixo. O
+contrato do exporter não certifica o restante da stack de mídia, e validar um
+contrato não comprova implantação nem isolamento em runtime.
 
 Na preparação inicial, havia apenas checkpoint privado de código/configuração,
 sem bancos consistentes, e a verificação da consolidação estava incompleta.
@@ -265,10 +271,72 @@ Uma leitura UID 1000 de **64 KiB de um arquivo real** coincidiu por hash com o
 core antes/depois, sem leitura integral do arquivo ou teste de reprodução.
 Isso não demonstra recuperação automática após falha física do USB.
 
-Não houve restauração das aplicações, Docker, GPU, migração ou verificação
-global do acervo. Recuperação USB e guards de ausência de mídia nas aplicações
-continuam pendentes; `production_ready` e `partial_restart_safe` permanecem
-falsos. O backup final único no HD mantém a estratégia e os limites anteriores.
+Ao fim dessa etapa de storage ainda não havia restauração das aplicações,
+Docker ou GPU nos convidados. A preparação do Jellyfin descrita abaixo é
+posterior. Migração e verificação global do acervo, recuperação USB automática
+e prontidão de produção não foram comprovadas. O backup final único no HD
+mantém a estratégia e os limites anteriores.
+
+## Jellyfin na playback
+
+A etapa de aplicação usa o Compose independente do
+[projeto de mídia](https://github.com/reisguilherme/homelab-mediaserver/blob/2ac092cdb3f6e57e26505fc123f13f21d87cf141/docs/runbooks/playback-nfs.md).
+Docker e a imagem original Jellyfin 12.2, fixada por digest, foram instalados
+somente na playback. Configuração e cache foram selecionados do checkpoint
+final para o SSD do core e transferidos ao SSD da playback, com hash da
+transferência conferido. Em ambas as restaurações, **32.777 arquivos regulares,
+25.497 diretórios e 12.944.183.365 bytes** tiveram conteúdo e metadados
+verificados. A referência restaurada permanece separada da cópia de trabalho.
+Nenhuma mídia foi migrada, formatada ou removida por essa operação.
+
+O container iniciou saudável, com HTTP privado na porta 8096, e recebe mídia
+por NFS RO confirmado, com configuração e cache graváveis no disco virtual
+local. A preparação offline preserva bancos e desabilita agendas
+nativas e monitoramento em tempo real enquanto o acervo está parcial; plugins
+ficam separados da configuração ativa. Sem GPU entregue à VM, o perfil usa
+CPU e transcode em tmpfs de 512 MiB. Isso não comprova capacidade para dez
+reproduções, transcode 4K ou operação contínua sob carga.
+
+O drop-in da unit Docker existente na playback exige o mount NFS, inclusive
+com `noauto` mantido no `fstab`. O guard do consumidor verifica identidade,
+origem e modo somente leitura do mount antes de iniciar e acompanha mudanças
+durante a execução. As fixtures de mount ausente/estranho e encerramento do
+processo passaram. O reboot da playback mudou o boot ID e trouxe o NFS RO
+automaticamente pela dependência do Docker, mantendo `noauto` no `fstab`.
+Docker voltou ativo e Jellyfin saudável, com contador de reinícios do container
+em zero. Nenhuma unit foi criada no host Proxmox.
+
+A API autenticada confirmou 20 tarefas ociosas sem gatilhos e três bibliotecas
+sem monitoramento em tempo real. A identidade original do servidor e os 18
+usuários foram preservados, sem erros nem execução de scans nos logs
+examinados. SQLite passou na verificação de integridade; os hashes comparados
+coincidiram com a referência em 32.373 itens de catálogo, 18 usuários, 807
+registros de histórico, 432 permissões e 234 preferências. No catálogo, a
+comparação cobriu identificação, tipo, nome, hierarquia e caminho dos itens,
+sem declarar hash de toda a base.
+
+Uma requisição de mídia autenticada retornou HTTP `206`; os 64 KiB recebidos
+coincidiram por hash com a leitura NFS. A decodificação por CPU processou três
+segundos e 72 frames, sem alteração do histórico. Autenticação usou uma chave
+API existente: login interativo por senha, reprodução em cliente externo e
+capacidade sob carga não foram testados.
+
+Após o reboot, autenticação, identidade, hashes do catálogo/usuários/histórico
+e contenção de scans passaram novamente. As 20 tarefas continuaram ociosas
+sem gatilhos, e as três bibliotecas mantiveram monitoramento em tempo real
+desabilitado; não houve erros nem execução de scans nos logs examinados. O
+core recebeu resposta de saúde `Healthy` na porta 8096. A edge continuou sem
+acesso às portas 8096 e 18096 da playback. Isso não comprova falha/retorno
+físico do HD USB ou reprodução pela internet.
+
+Arr, qBittorrent, controlador e workers permanecem parados; o Compose monolítico
+não foi iniciado. A edge e a publicação WAN continuam fechadas.
+
+O guard de mount não detecta necessariamente HD desligado com NFS `hard`
+ainda registrado; operações podem bloquear no kernel. Falha/retorno físico
+do USB, reintegração coordenada, GPU, consolidação do acervo, restrição da
+gestão LAN e nobreak continuam pendentes. `production_ready` e
+`partial_restart_safe` permanecem falsos.
 
 ## Verificação histórica da separação
 

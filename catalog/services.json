@@ -8,6 +8,14 @@
       "contractPath": "platform.contract.json",
       "manifestPaths": ["compose.observability.yaml"],
       "status": "proposed"
+    },
+    {
+      "id": "media-playback",
+      "repository": "https://github.com/reisguilherme/homelab-mediaserver",
+      "commit": "2ac092cdb3f6e57e26505fc123f13f21d87cf141",
+      "contractPath": "platform.playback.contract.json",
+      "manifestPaths": ["compose.playback.yaml"],
+      "status": "deployed"
     }
   ]
 }

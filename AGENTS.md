@@ -13,7 +13,8 @@ próprios; o catálogo aponta para commits imutáveis e distingue proposta de ex
   de sistema identificado na ficha privada para instalar Proxmox. Preservar o
   segundo SSD e todos os discos USB. O proprietário instalou Proxmox no SSD
   autorizado; identidade do host e acesso SSH/HTTPS foram conferidos. Core,
-  playback e edge já executam Ubuntu com QGA/SSH/NTP, sem apps, Docker ou GPU.
+  playback e edge já executam Ubuntu com QGA/SSH/NTP. Docker e a imagem
+  Jellyfin 12.2 foram instalados na playback; não há GPU nos convidados.
   O proprietário autorizou depois a entrega exclusiva do HD de 18 TB ao core,
   com inspeção RO antes de RW. O passthrough do dispositivo e o NFS RO para
   playback foram aplicados, preservando o adaptador Ethernet USB e o acervo.
@@ -29,14 +30,24 @@ próprios; o catálogo aponta para commits imutáveis e distingue proposta de ex
   manter ali a única cópia final completa e prosseguir; a transferência Windows
   foi interrompida e seus parciais não servem para restauração. Não reexigir
   segunda cópia ou novo ensaio integral como condição para instalar. O
-  checkpoint anterior permanece intacto. Restauração, guards das aplicações,
-  recuperação USB e publicação continuam pendentes. A prova NFS RO usou
-  fixture sintética; não comprova Jellyfin funcionando ou integridade global.
+  checkpoint anterior permanece intacto. Configuração e cache do Jellyfin
+  foram restaurados e conferidos separadamente no core e na playback; isso
+  não restaura toda a stack. O Compose independente do consumidor exige mídia
+  NFS RO e mantém a automação privada parada. Jellyfin iniciou saudável; API
+  autenticada, preservação do catálogo, leitura HTTP e decodificação por CPU
+  passaram. Reboot da playback confirmou retorno automático do NFS RO,
+  Docker e Jellyfin, preservando catálogo e contenção de scans. Login
+  interativo e reprodução em cliente externo não foram testados, conforme
+  [Jellyfin na playback](docs/implementation-status.md#jellyfin-na-playback).
+  Recuperação USB e publicação continuam pendentes. A prova NFS RO não
+  comprova integridade global do acervo.
 - Dispositivos e escopo exatos precisam de autorização antes de alteração
   destrutiva. Preservar o acervo, origens e pausas manuais; não limpar mídia.
 - Não substituir fstab inteiro, ativar RTX, reescrever serviço Lenovo, abrir
   portas do roteador ou publicar administração qBit na internet.
 - Não criar CI/CD, releases próprias, gerenciador de backups ou units do host.
+  Os drop-ins das units NFS no core e Docker na playback pertencem aos guests;
+  não instalar o drop-in Docker em host compartilhado ou no Proxmox.
 - Nunca versionar .env real, inventário bruto, bancos, tokens, mídia ou evidências
   privadas. Segredos ficam no .env privado de cada implantação, sem *_FILE.
 - Usar fixtures temporárias e Python 3.12/Linux para os checks. Teste local não
