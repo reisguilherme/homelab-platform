@@ -5,8 +5,9 @@ com firewall PVE `enabled/running`, DROP IN/OUT e chains das NICs conferidos.
 Edge → core:8080, controle:443 e PVE:8006/22 deram timeout. Duas regras DNAT
 TCP 80/443 foram aplicadas sem reload; HTTP 308 para HTTPS correto passou pela
 LAN. A publicação está em ativação, sem certificado TLS após timeouts externos
-do ACME e no 4G, com causa ainda não determinada. Não ampliar portas ou relaxar
-o firewall para contornar o diagnóstico. O core já tem
+do ACME e do 4G em 80/443. A regra temporária WAN 10443 → LAN 443 está ativa,
+com chegada externa capturada; serve só ao diagnóstico. A prioridade escolhida
+é resolver 80/443 sem relaxar o firewall. O core já tem
 oito processos nativos vivos; API, gateway e
 worker estão em manutenção, sem readmissão das automações. A tabela de rede
 abaixo preserva o aceite do bootstrap, anterior à exceção de backend; consulte

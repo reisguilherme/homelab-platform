@@ -11,8 +11,9 @@ torrents continuam parados, um em `missingFiles`. Foram publicados 8.209 caminho
 únicos (5,449 TB), sem os dois aliases degradados. Origens permanecem preservadas
 e gatilhos Jellyfin contidos. Backend edge → playback:8096 e isolamento PVE
 foram comprovados; DNAT TCP 80/443 foi aplicado e 33 checks do proxy passaram.
-A publicação está em ativação, sem certificado TLS: ACME e 4G deram timeout
-externo, com causa ainda não determinada. Manter firewall e portas atuais. Consulte o
+A publicação está em ativação, sem certificado TLS: 80/443 externas dão timeout;
+10443 temporária chega ao PVE e serve só ao diagnóstico. O proprietário priorizou
+resolver 80/443, sem DNS-01 ou 10443 em produção. Consulte o
 [estado atual](docs/implementation-status.md); os relatos anteriores abaixo são
 históricos e não alteram os limites operacionais.
 

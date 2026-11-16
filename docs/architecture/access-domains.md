@@ -3,22 +3,16 @@
 **Atualização em 16/11/2026:** backend edge → playback e isolamento de rede
 comprovados; 33 checks do proxy passaram, incluindo login comum e negações admin.
 DNAT TCP 80/443 aplicado sem reload e HTTP 308 para HTTPS correto pela LAN.
-O DNS A foi confirmado, mas **ainda não há certificado TLS**: Let's Encrypt
-resolveu o destino esperado e registrou timeout TCP 80. O proprietário confirmou
-WAN e mapeamentos TCP 80/443 ativos para o PVE, com MAC correto; HTTP/HTTPS pelo
-4G deram timeout. DNS A esperado e HTTP 308 pelo domínio foram
-comprovados no Windows; NAT loopback funciona nesse desktop. HTTPS falhou no
-Schannel, ainda sem certificado. As capturas anteriores em
-`vmbr0` não validaram sequer o controle LAN e foram descartadas como evidência
-de ausência de tráfego. A captura SYN corrigida em `nic1` validou LAN e loopback
-e cobriu a tentativa 4G relatada, sem origem externa distinta atribuível a ela.
-SYN com origem aparente igual à WAN também apareceram; SNAT pode ocultar sua
-origem real. O status WAN enviado pelo proprietário confirmou a conexão IPv4
-ativa com o endereço esperado pelo DNS e o vínculo correto dos mapeamentos.
-O próximo teste orientado é WAN TCP 10443 → LAN TCP 443 do PVE, temporário e na
-mesma WAN, ainda sem confirmação de criação ou aplicação. Nenhuma mudança
-adicional foi feita no PVE/edge. Não concluir bloqueio da operadora ou falha do
-roteador. `streaming.greis.dev.br` permanece em ativação, sem anúncio de disponibilidade.
+DNS A, WAN e vínculo dos mapeamentos foram conferidos; NAT loopback HTTP funciona
+no desktop. **Ainda não há certificado TLS**; ACME e 4G nas portas externas
+80/443 deram timeout. A regra temporária WAN 10443 → LAN 443 foi criada: o teste
+4G deu erro de protocolo SSL e a captura validada registrou oito SYN externos
+distintos chegando a PVE:443. A porta alternativa chega ao mesmo destino interno;
+isso ainda não distingue roteador de operadora na falha de 80/443.
+O proprietário escolheu resolver **80/443 e a URL sem porta** primeiro. 10443
+é somente diagnóstico temporário ativo; não preparar DNS-01 ou 10443 em produção.
+A conferência somente leitura de acesso WAN e filtros IP do roteador continua pendente.
+`streaming.greis.dev.br` permanece em ativação, sem anúncio de disponibilidade.
 Não se declara implantação dos nomes administrativos privados.
 
 Desenho solicitado em **16/11/2026**, em implantação parcial. O proprietário possui
@@ -140,8 +134,8 @@ para os nomes privados continua por definir. Ver
 
 | Área | O que falta comprovar |
 |---|---|
-| WAN e provedor de internet | Vínculo WAN confirmado; teste temporário WAN 10443 → LAN 443 orientado, ainda não aplicado. SNAT possível impede atribuir conclusivamente a origem/falha da tentativa 4G. |
-| Caminho público | DNAT 80/443 e loopback HTTP funcionam no desktop examinado; faltam conectividade externa, TLS e reprodução. Não inferir acesso pela internet a partir do loopback. |
+| WAN e provedor de internet | Vínculo WAN e chegada externa via 10443 confirmados; localizar a falha de 80/443 entre roteador/operadora, começando por gestão remota/filtros. |
+| Caminho público | 10443 é teste temporário ativo, sem TLS; o proprietário priorizou resolver 80/443 para URL sem porta. Faltam certificado e reprodução externa. |
 | DNS e TLS | Emissão, renovação e retorno do certificado público testados; estratégia DNS-01 dos nomes privados ainda por definir, sem expor portas administrativas ou segredos. |
 | Acesso privado | Resolução na LAN e Tailscale, rota mínima ao resolvedor e aos serviços, políticas ACL/grants efetivas e negação a clientes sem permissão. |
 | Isolamento | Nenhuma rota pública aos seis nomes administrativos, aos opcionais privados ou às portas nativas; verificar também IPv6. |

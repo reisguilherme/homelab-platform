@@ -7,12 +7,11 @@ e worker estão em manutenção, sem readmissão das automações. Os 734 torren
 permanecem parados, um em `missingFiles`.
 Backend edge, isolamento e 33 checks do proxy foram aceitos. DNAT TCP 80/443
 foi aplicado; a publicação segue em ativação, sem certificado TLS após timeouts
-externos do ACME e no teste 4G. O proprietário confirmou WAN/mapeamentos ativos;
-a captura corrigida validou LAN/loopback e cobriu a tentativa 4G relatada, sem
-origem externa distinta atribuível a ela. O vínculo WAN foi confirmado; o teste
-temporário WAN 10443 → LAN 443 foi orientado, ainda não aplicado nem confirmado.
-SNAT possível impede concluir a causa. PVE/edge sem mudança adicional e
-disponibilidade pública pendente.
+externos do ACME e do 4G em 80/443. A regra temporária WAN 10443 → LAN 443 está
+ativa e a chegada externa foi capturada, ainda sem TLS. O proprietário escolheu
+resolver primeiro 80/443 para URL sem porta: 10443 é só diagnóstico, sem DNS-01
+ou uso em produção. A causa entre roteador/operadora continua por localizar;
+acesso WAN e filtros IP do roteador serão conferidos somente leitura.
 Os gatilhos Jellyfin seguem contidos. O [estado atual](../implementation-status.md)
 detalha as provas; a sequência abaixo registra a prioridade e o planejamento
 anteriores, não afirma que todas as etapas ainda estejam por começar.

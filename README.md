@@ -7,9 +7,9 @@ arquivos únicos (5,449 TB); dois aliases degradados permanecem excluídos, com
 origens preservadas e scans Jellyfin contidos. Backend edge → playback e
 isolamento PVE passaram nos checks reais. DNAT TCP 80/443 aplicado, HTTP 308
 para HTTPS conferido pela LAN e 33 checks do proxy aprovados. **Publicação em
-ativação, ainda sem certificado TLS.** ACME e teste 4G deram timeout externo,
-apesar do redirect LAN funcionar; a causa ainda não foi determinada.
-Não declarar o serviço disponível nem liberar portas adicionais.
+ativação, ainda sem certificado TLS.** 80/443 externas dão timeout; o teste
+temporário via 10443 chega ao PVE, ainda sem TLS. O proprietário escolheu resolver
+primeiro 80/443 para URL sem porta; 10443 continua apenas diagnóstica.
 O [estado canônico](docs/implementation-status.md) detalha o alcance; a narrativa
 abaixo conserva as etapas anteriores.
 
