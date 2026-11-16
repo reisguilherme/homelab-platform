@@ -1,134 +1,223 @@
 # Observabilidade, administração e governança
 
-Proposta de 14/11/2026. O proprietário confirmou que quer **visibilidade e controle completos**, incluindo criar/remover VMs, alterar recursos e administrar o acesso de cada VM. Este documento define a cobertura e as fronteiras; não instala painéis nem altera permissões.
+Desenho revisto em **15/11/2026** após o proprietário reafirmar que a plataforma
+precisa de API, dashboards e controle de VMs próprios, separados do projeto de
+mídia. A composição anterior de links para consoles não entregava esse requisito.
+Este documento define o destino; o [estado da implementação](../implementation-status.md)
+registra o que foi aplicado e testado. O [plano de execução](../plans/2026-11-15-platform-governance.md)
+detalha interfaces, tarefas e aceites.
 
-## 1. Uma área privada de operação
+**Estado em 16/11/2026:** homelab-control hospeda API/portal, Prometheus e Grafana
+por TLS privado. CRUD/ACL, TOTP, seis targets, falha/resolução de coleta e reboot
+do controle passaram em ensaios reais. Portal e 22 painéis passaram no navegador
+desktop/mobile; medições sob carga permanecem pendentes. O
+[runbook](../runbooks/platform-governance.md) delimita cada prova e limite.
 
-A recomendação é **Grafana para visão consolidada, Proxmox para controle da infraestrutura e HomeServer para operações da aplicação**. A entrada privada reúne os links e o contexto de host/VM/serviço. O console Proxmox continua acessível diretamente pela rede de gestão, mesmo se o portal, o core ou Grafana estiverem parados. A primeira entrega integra consoles existentes; uma tela própria que reproduza todas as funções do Proxmox seria outro projeto.
+## 1. Plataforma independente dos consumidores
+
+A VM **homelab-control** recebe o portal e a API da plataforma, Prometheus,
+Grafana e coleta de infraestrutura. Persistência e auditoria ficam no seu SSD
+virtual, sem depender do HD USB, NFS ou containers de mídia. A API implementa
+operações delimitadas usando a API HTTPS do Proxmox. O console Proxmox continua
+acessível diretamente pela rede de gestão, inclusive com o portal parado.
 
 ```mermaid
 flowchart TB
-    ADMIN[Administrador: rede privada e MFA] --> HOME[Entrada privada de operacao]
-    HOME --> GRAF[Grafana: visao consolidada]
-    HOME --> PVE[Proxmox: controle completo das VMs]
-    HOME --> OPS[HomeServer: operacoes da aplicacao]
-    ADMIN -->|acesso independente do portal| PVE
-    MET[Prometheus: metricas] --> GRAF
-    COL[Coletores: host, guests e aplicacoes] --> MET
-    AUD[Eventos sanitizados e historico de tarefas] --> GRAF
-    PVE -->|ACL e tarefas auditadas| VMS[VMs: criar, configurar, iniciar e remover]
-    OPS -->|autorizacao no servidor| CORE[Controller e recuperacao USB]
-    UPS[Nobreak e estado de energia] --> COL
-    EXT[Sonda em outro dominio fisico] -->|detecta queda total| ALERT[Canal de alerta a escolher]
-    GRAF -->|Grafana Alerting| ALERT
+    ADMIN[Administrador na rede privada] --> PORTAL
+    ADMIN -->|acesso independente| PVE[Console e API Proxmox]
+    subgraph CONTROL[VM homelab-control / projeto homelab]
+        PORTAL[Portal privado / mesma origem da API]
+        API[API de governanca / sessao e autorizacao]
+        AUD[(Auditoria e operacoes / SSD local)]
+        COL[Coletor Proxmox / somente leitura]
+        PROM[Prometheus]
+        GRAF[Grafana]
+        PORTAL --> API
+        API --> AUD
+        COL --> PROM
+        PROM --> GRAF
+        PORTAL --> GRAF
+    end
+    API -->|identidade humana delegada / HTTPS| PVE
+    COL -->|token exclusivo de leitura / HTTPS| PVE
+    PVE --> MEDIA[mediaserver-core / playback / edge]
+    PVE -. recursos futuros .-> OTHER[Outros projetos]
+    MEDIA -. metricas explicitamente autorizadas .-> PROM
+    UPS[Nobreak / aquisicao pendente] -. sinais futuros .-> PROM
+    EXT[Sonda fora do compute / futura] -. queda total .-> ALERT[Canal a escolher]
+    PROM -. notificacao externa futura .-> ALERT
 ```
 
-As setas de telemetria representam fluxo de dados; não autorizam conectividade geral entre zonas. Grafana não recebe token de administrador Proxmox, socket Docker nem chave de exclusão do controlador. Links levam ao console que valida a sessão e a permissão. Ações comuns poderão usar um backend privado com permissões específicas; credenciais de infraestrutura nunca ficam no JavaScript do navegador, variáveis do dashboard ou URLs. As ações nativas de painel do Grafana são chamadas básicas de API e não substituem essa camada. [Grafana: links e ações](https://grafana.com/docs/grafana/latest/visualizations/panels-visualizations/configure-data-links/).
+As setas não concedem conectividade geral. Somente a VM de controle ganha acesso
+necessário à API do hipervisor. Media edge/playback não recebem esse acesso nem
+credenciais de governança. Grafana não recebe ticket de administrador, token de
+mutação, socket Docker ou chave de exclusão de mídia.
 
-### Cobertura administrativa
+### Identidade de recursos
 
-| Objeto | Controle oferecido | Autoridade e limite |
+| Recurso | Nome visível Proxmox | Tags | Pool de projeto |
+|---|---|---|---|
+| Core de mídia | `mediaserver-core` | `mediaserver;core;storage` | `mediaserver` |
+| Playback | `mediaserver-playback` | `mediaserver;playback` | `mediaserver` |
+| Borda de mídia | `mediaserver-edge` | `mediaserver;edge` | `mediaserver` |
+| Governança e observabilidade | `homelab-control` | `homelab;governance;observability` | `homelab` |
+
+Tags e pools identificam posse; ACLs e regras de rede aplicam permissões. Nome
+visível não exige mudar VMID, endereço ou hostname do convidado. Perfis de
+automação que verificam nomes precisam acompanhar a mudança. O core ainda
+abriga o hub físico inicial: dispositivos e exports pertencem à plataforma,
+enquanto os dados lógicos e a automação pertencem ao consumidor. Separar esse
+hub em `homelab-storage` é evolução futura com orçamento próprio.
+
+## 2. Controle oferecido e limites
+
+| Objeto | Primeira API e portal | Autoridade e complemento |
 |---|---|---|
-| VMs | Criar, clonar quando suportado, iniciar, desligar, reiniciar, console e remover | Proxmox; acompanhar o resultado da tarefa, capacidade e dependências |
-| Recursos | CPU, RAM, discos virtuais, NICs, limites e ordem de boot | Proxmox; hotplug depende da configuração e suporte do guest; algumas alterações exigem parada |
-| Discos de VM | Criar/anexar/expandir conforme backend | Expandir disco virtual não expande automaticamente partição/filesystem do guest; redução não é uma operação genérica segura |
-| Acesso por VM | Usuários/grupos, papéis, ACLs por VM/pool, console e energia | ACL Proxmox controla o hipervisor; não cria usuário Linux nem conta Jellyfin |
-| Rede | Zonas, NIC/VLAN, firewall e regras de entrada/saída | Proxmox e equipamento de rede; regras efetivas testadas em IPv4/IPv6 |
-| Sistema convidado | Usuários, SSH, sudo, atualizações e configuração do SO | Gestão autenticada do guest; acesso ao console é um privilégio sensível |
-| Aplicações | Contas, bibliotecas, fila, pausas, edição privada e exclusões coordenadas | Painéis nativos e API HomeServer; controles de capacidade continuam na automação |
-| Storage | Saúde, disponibilidade, exports, permissões e orçamento por consumidor | Hub/NFS; quotas e reservas precisam ser implementadas no backend adequado |
-| Recuperação | Estado, motivo da espera, histórico, desativação e retomada autorizada | Coordenador de recuperação; botão não ignora UUID, integridade, capacidade ou manutenção |
+| Inventário | Nó, VMs, projeto, recursos, capacidade, tarefas e idade da coleta | Proxmox é fonte do estado; catálogo acrescenta relações, não cria recursos |
+| VMs | Criar por perfil permitido, iniciar, desligar, reiniciar e remover com prévia de impacto | Primeira criação entrega hardware desligado e sem NIC; SO/rede/aplicações exigem preparação no console; tarefa aceita não comprova conclusão |
+| CPU/RAM | Consultar e editar com estado/digest esperado, mostrando mudanças pendentes | Hotplug depende do guest; mudança que exige parada não é apresentada como efetiva |
+| Acesso por VM | Consultar, conceder e revogar ACL explícita a usuário/grupo existente | ACL herdada aparece com origem; não alterar o ancestral silenciosamente |
+| Console e hardware avançado | Link contextual para console Proxmox autenticado | NICs, discos, passthrough e outras opções permanecem no console enquanto não houver endpoint próprio ensaiado |
+| Sistema convidado | Contexto e caminho para gestão do SO | ACL Proxmox não cria usuário Linux, chave SSH ou conta de aplicação |
+| Aplicações | Links privados e estado de integrações disponíveis | Operações de mídia continuam no repo e API do consumidor |
+| Storage e energia | Estado da evidência e motivo de espera quando publicados pelo coordenador | Mount presente não prova saúde; o portal não ignora identidade, integridade ou manutenção |
 
-O painel Proxmox já possui gestão de VMs, hardware, console e tarefas. Suas permissões distinguem alocação, energia, configuração e auditoria. Uma conta humana proprietária pode ter administração completa; coletores e automações usam identidades próprias com o menor alcance necessário. A separação de privilégios dos tokens limita a permissão à interseção das ACLs do token e do usuário. Validar os nomes de privilégios na versão instalada. [GUI](https://github.com/proxmox/pve-docs/blob/master/pve-gui.adoc), [ACLs e tokens](https://github.com/proxmox/pve-docs/blob/master/pveum.adoc), [VMs](https://github.com/proxmox/pve-docs/blob/master/qm.adoc).
+Excluir VM exige prévia do alvo, nome, digest, impacto resumido e bloqueadores,
+seguida de confirmação vinculada à mesma configuração. A prévia atual não
+enumera cada volume individualmente. A API recusa
+destruição de VM com passthrough físico ou dependência protegida até existir
+procedimento específico. USB, exports compartilhados e acervo não viram lixo
+da VM. Parada forçada é distinta de desligamento e exige confirmação de impacto.
+Nenhum botão executa formatação, comando arbitrário ou limpeza de mídia.
 
-**Excluir VM tem um escopo explícito:** mostrar VM, discos virtuais que serão removidos, dependentes e recursos externos. USB em passthrough, export compartilhado e dados de outro consumidor não são lixo da VM. Excluir o core derruba o hub e a automação: precisa de confirmação de impacto e de um caminho de recuperação. O desenho não autoriza exclusão automática de mídia nem operações de disco em produção.
+Lock e idempotência coordenam apenas pedidos do portal. Alterações pelo
+console ou outra API não participam desse lock. CPU/RAM usam digest upstream;
+energia, DELETE e ACL não oferecem comparação atômica equivalente. Prévia e
+revalidação reduzem, mas não eliminam, mudança externa entre conferência e
+execução. Coordenar essas operações com o uso do console; não prometer exclusão
+ou ACL imunes a toda concorrência externa.
 
-## 2. Autorização e trilha de mudanças
+## 3. Identidade, sessão e autorização
 
-Três dimensões de acesso são administradas separadamente: **quem pode operar a VM no Proxmox; quais redes podem alcançá-la; quem pode entrar no SO e nas aplicações**. Cada consumidor de storage também recebe sua política de arquivos. Dar acesso a uma VM não concede acesso às outras, à rede de gestão ou a todos os diretórios do hub.
+O portal usa login delegado no Proxmox. O navegador envia credenciais por POST
+HTTPS para o backend da mesma origem; login/TOTP só habilitam envio após os
+handlers e a leitura inicial da sessão. O proxy não registra query strings.
+O backend consulta `/access/ticket` no destino
+fixo, com CA e hostname verificados. A senha existe somente durante essa
+requisição. Ticket e token CSRF Proxmox ficam em memória no servidor, associados
+a uma sessão opaca; não entram no JavaScript, banco, URL, logs ou Grafana.
+Reiniciar a API exige novo login, sem apagar o histórico de operações.
 
-| Papel proposto | Permissões |
+O desafio `NeedTFA` nunca estabelece sessão autenticada. A primeira integração
+atende TOTP com desafio assinado guardado no backend, prazo curto e tentativa
+limitada. Método não implementado é informado como incompatível e continua
+disponível no console nativo; não remover MFA para facilitar o portal.
+[Contrato de autenticação Proxmox](https://github.com/proxmox/pve-access-control/blob/master/src/PVE/API2/AccessControl.pm).
+
+Cada requisição exige a sessão atual; mutações exigem token CSRF próprio e
+origem exata. Cookies usam `HttpOnly`, `Secure` e `SameSite`; não habilitar CORS
+aberto. A sessão expira por inatividade e por prazo absoluto. A API usa as ACLs
+da identidade delegada em cada operação, incluindo autorização por objeto;
+ocultar um botão não concede nem revoga permissão. Inventário e auditoria não
+podem revelar VMs inacessíveis ao usuário.
+
+| Papel | Permissões e fonte |
 |---|---|
-| Proprietário | Administração completa privada; MFA; conta de recuperação local preservada e testada |
-| Operador delegado | Ações selecionadas em VMs/serviços definidos; sem elevar o próprio papel |
-| Observador | Dashboards e inventário sanitizado; sem operações ou segredos |
-| Coletor | Leitura das métricas/objetos necessários; sem console, power management ou configuração |
-| Automação | Identidade por função e escopo; sem token global reutilizado entre recovery, telemetria e aplicações |
+| Proprietário | Administração privada concedida no Proxmox; acesso de recuperação independente preservado |
+| Operador | Ações e VMs permitidas pelas ACLs Proxmox, sem elevação pelo portal |
+| Observador | Leitura dos objetos autorizados; nenhuma mutação |
+| Coletor/capacidade | Token separado e revogável, somente GET para telemetria e prova de capacidade; nunca autoriza mutações humanas |
+| Automação | Identidade por função; recuperação de storage não reutiliza login humano ou token de coleta |
 
-A futura API de operações deve validar sessão, autorização e origem/CSRF no servidor, registrar intenção e resultado, e evitar duplicação após timeout/reenvio. Operações Proxmox que retornam UPID só terminam quando a tarefa apresenta `stopped` e seu `exitstatus` foi inspecionado; resposta HTTP ou ID de tarefa não significa sucesso. Em timeout, consultar o estado existente antes de criar outra VM ou repetir uma exclusão. [API oficial de tarefas](https://github.com/proxmox/pve-manager/blob/master/PVE/API2/Tasks.pm).
+Tokens com privilégios separados têm alcance limitado pela interseção das ACLs
+do usuário e do token. Os privilégios e parâmetros foram conferidos no schema
+da versão instalada. A prova de capacidade exige leitura global completa,
+verifica ACLs/ausência de grupos e overrides, privilégios e separação do token
+antes e depois do snapshot; falha impede nova alocação. A identidade interna
+de coleta não pode ser modificada pelo endpoint ACL do portal. Não criar token global de
+administrador para contornar uma negação.
+[ACLs e tokens Proxmox](https://github.com/proxmox/pve-docs/blob/master/pveum.adoc).
 
-Registro mínimo: horário sincronizado, identidade, ação, alvo, parâmetros sanitizados, estado anterior/posterior pertinente, ID da operação/tarefa e resultado. Nunca registrar senha, token, URL de sessão ou `.env`. Inventário deve relacionar host → VM → serviço → volume/export, responsável, finalidade, dependências e recursos previstos. Histórico local pode ser alterado por um administrador comprometido; trilha resistente a esse cenário exige cópia externa com autoridade distinta, ainda não disponível.
+## 4. Operações e auditoria
 
-## 3. Evidência estática e preparação atual
+A API possui rotas e parâmetros tipados. Não oferece proxy genérico para paths
+Proxmox, root SSH, QGA arbitrário, shell do host ou socket Docker. Alterações
+registram intenção durável antes da chamada externa, com chave de idempotência
+e estado observado. Falha ao persistir auditoria impede a mutação.
 
-| Evidência local | Limite atual |
-|---|---|
-| [Host metrics](https://github.com/reisguilherme/homelab-mediaserver/blob/8627cd8ff76411831c95eb0072f88998c27469e0/scripts/host-metrics.py) e [serviço no Compose](https://github.com/reisguilherme/homelab-mediaserver/blob/8627cd8ff76411831c95eb0072f88998c27469e0/compose.yaml#L935) coletam CPU/RAM, temperatura, uptime, rede e storage | Snapshot JSON substituído atomicamente; não há série histórica de cluster |
-| [Telemetry](https://github.com/reisguilherme/homelab-mediaserver/blob/8627cd8ff76411831c95eb0072f88998c27469e0/services/telemetry/src/homeserver_telemetry/app.py) expõe status e interface; [provider](https://github.com/reisguilherme/homelab-mediaserver/blob/8627cd8ff76411831c95eb0072f88998c27469e0/services/telemetry/src/homeserver_telemetry/status.py) considera idade das evidências | O commit de referência também prepara um exporter dedicado de snapshots; cobertura e ativação não se inferem do endpoint web |
-| Heartbeat e ciclo do worker persistem saúde e último resultado | Processo vivo não prova progresso nem sucesso do último ciclo |
-| [Outbox de alertas](https://github.com/reisguilherme/homelab-mediaserver/blob/8627cd8ff76411831c95eb0072f88998c27469e0/services/telemetry/src/homeserver_telemetry/alerts.py) e [transporte](https://github.com/reisguilherme/homelab-mediaserver/blob/8627cd8ff76411831c95eb0072f88998c27469e0/services/telemetry/src/homeserver_telemetry/notifications.py) têm deduplicação/retry | Não foi encontrada instanciação/rotina de envio em execução no código inspecionado; não declarar alertas operacionais |
-| Compose usa rotação local de logs Docker | Limite de bytes não é retenção temporal garantida, busca central nem auditoria independente |
-| Operações persistidas no controlador | Não há trilha completa integrada de Proxmox, guests, rede e aplicações; inventário de rotas não comprova handler de eventos implementado |
+Resposta com UPID indica tarefa iniciada. Sucesso exige `stopped` e `exitstatus`
+aceitável; timeout ou resposta ambígua deixam a operação em reconciliação, sem
+repetir criação/exclusão automaticamente. Se não houver mais credencial válida
+para consultar o resultado, mostrar a pendência e pedir novo login.
+Criação sem UPID ou prova suficiente fica em reconciliação e impede novas
+alocações no mesmo nó até investigação; não liberar outra tentativa por timeout.
+[API de tarefas](https://github.com/proxmox/pve-manager/blob/master/PVE/API2/Tasks.pm).
 
-O endpoint de fila em memória não deve ser tomado como inventário autoritativo de todos os trabalhos. Os painéis devem usar estados persistidos de downloads, permits, importações e exclusões, com idade e fonte da evidência. Esta separação não inspecionou esses componentes em produção; checks locais limitados da inspeção anterior estão contextualizados no [as-is](as-is.md).
+SQLite fica no SSD da VM de controle, com transações. A implementação atual
+ainda não tem poda/retenção automática; monitorar ocupação e definir manutenção
+antes de crescimento sustentado. Registro mínimo: horário sincronizado, identidade,
+ação, alvo, parâmetros permitidos, estado anterior relevante, identificador de
+operação/tarefa e resultado. Senhas, tickets, tokens, `.env`, URLs de sessão e
+nomes de mídia ficam excluídos. Detalhes de auditoria são autenticados e filtrados
+pela autorização; não são labels Prometheus. Histórico local não resiste ao
+comprometimento do próprio administrador/SSD; cópia externa independente é uma
+lacuna, não uma garantia deste desenho.
 
-### Posse e integração da observabilidade
+## 5. Recursos e observabilidade
 
-Prometheus/Grafana pertencem à plataforma e não fazem build nem importam código de
-mídia. O consumidor mantém exporter, publicador sanitizado e dashboard específico.
-A integração preparada usa rede Docker interna compartilhada no **mesmo daemon**,
-com targets privados opt-in; ela não cria caminho entre VMs. Sem target opt-in,
-self-scrape de Prometheus não significa monitoramento das aplicações. O coletor de
-mídia sem opt-in continua independente da stack central.
+O orçamento escolhido é **2 vCPU, 2 GiB de RAM e disco virtual de 24 GiB** para
+homelab-control. Esse guest foi criado e a RAM do core reduzida de 6 para 4 GiB
+após medição e parada limpa, mantendo 11 GiB totais de guests, 3 GiB de
+orçamento do host e cerca de 1,49 GiB de margem. Memória livre momentânea
+não garante retomada futura da automação; medir novamente sob essa carga.
+[Conta de RAM e thin pool](to-be.md#orçamento-inicial-de-recursos).
 
-A configuração concreta está no [guia de observabilidade](../observability.md).
-Os limites preparados são 512 MiB para Prometheus e 384 MiB para Grafana, com
-retenção de 7 dias/4 GiB para o TSDB. Diretórios, UIDs/grupos, acesso e recursos reais
-precisam de preparação e medição antes de ativar. Isso não encerra G12/G21: alertas,
-Proxmox/VMs, energia e auditoria integrada permanecem requisitos futuros.
+Prometheus mantém teto de 512 MiB, Grafana de 384 MiB. API/coletor têm teto
+inicial conjunto de 384 MiB; SO, cache e demais processos usam a margem interna
+da VM. Os valores são orçamentos para ensaio, não medições. Não incluir Loki,
+Alloy, traces ou Immich sem nova conta. TSDB, auditoria e Grafana ficam em SSD
+local; Prometheus tem retenção de sete dias/4 GiB, enquanto SQLite ainda não
+tem poda automática. Alertas de espaço não criam quotas nos binds.
 
-## 4. Stack recomendada e orçamento
-
-| Etapa | Componentes | Condição |
+| Visão | Fonte inicial | Limite explícito |
 |---|---|---|
-| Inicial | Proxmox nativo + Grafana + Prometheus; um único mecanismo de regras/notificações, inicialmente Grafana Alerting | Coletores por necessidade; métricas HomeServer ainda exigem adaptação; tudo privado |
-| Após medição | Alloy + Loki para logs sanitizados selecionados | Limitar ingestão/retenção e consumo antes de incluir todos os containers |
-| Quando houver necessidade | Traces OpenTelemetry e backend correspondente | Útil para diagnosticar latência entre serviços; não obrigatório para o primeiro nó |
-| Com outro domínio físico | Sonda externa ao compute e destino de alerta independente | Detecta host/rede/stack inteira fora do ar; sonda na mesma VM não cobre essa falha |
+| Nó e VMs | API Proxmox, coleta a cada 30 s | Dados do hipervisor não substituem métricas internas do guest |
+| Capacidade | Uso físico de storage, tamanhos virtuais, data/metadata thin quando disponíveis | Volume lógico não é reserva física; ausência de indicador aparece como desconhecida |
+| Operações e acesso | API e auditoria local | Não inclui automaticamente alterações externas à plataforma |
+| Storage e recuperação | Evidência sanitizada do coordenador, com idade | USB/SMART/energia só aparecem após existir integração real |
+| Saúde da observabilidade | Estado dos scrapes, idade, falhas, disco e memória | O próprio painel pode cair junto do host |
+| Mídia e outros consumidores | Exporters explícitos privados por projeto | Não inferir coleta ativa por haver contrato no catálogo |
 
-Grafana é a recomendação por reunir métricas e, depois, logs com o mesmo contexto. Zabbix é alternativa se o foco passar a ser inventário, disponibilidade e administração de muitos equipamentos com fluxos próprios. Netdata pode ajudar no diagnóstico imediato, mas adicioná-lo junto de todos os coletores cria duplicidade. Não há ganho em instalar as três opções agora. [Grafana](https://grafana.com/docs/grafana/latest/), [Zabbix](https://www.zabbix.com/documentation/current/en/manual/web_interface/frontend_sections), [Alloy](https://grafana.com/docs/alloy/latest/introduction/), [Netdata](https://learn.netdata.cloud/docs/netdata-parents/).
+Labels limitam-se a nó, VM, projeto, serviço e estados enumerados. Não incluir
+usuários, títulos, paths, IP de clientes ou IDs ilimitados de operação. Dados
+ausentes/antigos aparecem como desconhecidos, sem converter falha de coleta em
+zero saudável. A rede Docker `homelab-metrics` só conecta containers do mesmo
+daemon; entre VMs são necessários destino privado e regra efetiva próprios.
+[Guia de observabilidade](../observability.md).
 
-**Os 16 GB já têm orçamento no [to-be](to-be.md).** Grafana/Prometheus começam dentro do orçamento de 6 GiB do core, em containers separados, com teto conjunto experimental de 1 GiB a validar; isso reduz a memória disponível à automação. Não é previsão de consumo nem garantia de que caberá. Se houver OOM, pressão de memória ou latência de controle, reduzir séries/retenção/tarefas e reavaliar RAM antes de avançar. A margem de 2 GiB do host não está simultaneamente disponível para uma quarta VM. Loki e Immich não entram escondidos nessa conta. Separar monitoramento em VM própria é evolução após redimensionamento; o painel nativo Proxmox permanece independente do core.
+Alertas precisam de regra, duração, severidade, responsável, runbook e resolução.
+O primeiro painel mostra alertas locais de coleta, capacidade e falha de
+operações. A indisponibilidade real do coletor e de um exporter por 150 s
+disparou os dois alertas de coleta; eles resolveram após a restauração. Entrega externa depende de canal escolhido e teste efetivo; não
+declarar notificações operacionais antes disso. Uma sonda fora deste compute é
+necessária para detectar queda total. Nobreak e teste de energia permanecem
+pendentes.
 
-Métricas e configuração ficam em disco virtual SSD, fora da união de mídia. Como ponto de partida de ensaio: coleta de infraestrutura a cada 30 s, aplicação a cada 60 s, retenção de métricas de 7 dias e limite de TSDB de 4 GiB dentro de volume de 8 GiB. Grafana/configuração e logs têm orçamentos separados. Ajustar com cardinalidade/ingestão reais; retenção TSDB não é quota rígida para todos os arquivos, e WAL/head exigem folga. Alertar sobre espaço livre; não deixar observabilidade encher o SSD do controlador. Prometheus local não deve usar um filesystem NFS. [Armazenamento Prometheus](https://prometheus.io/docs/prometheus/latest/storage/).
+## 6. Aceite
 
-Coletores de hardware leem o host; métricas de VM vêm da API Proxmox; métricas de sistema/aplicação vêm do guest. SMART/temperatura do USB podem estar indisponíveis pela bridge/passthrough e devem aparecer como **desconhecidos**. Um coletor de containers que precise de acesso amplo ao host ou socket Docker deve ser avaliado como componente privilegiado; socket montado `:ro` não transforma a API Docker em somente leitura. Não instalar agentes duplicados em cada camada sem uma necessidade de dado definida.
-
-## 5. Dashboards e alertas
-
-| Painel | O que precisa responder |
+| Evidência | Alcance em 16/11/2026 |
 |---|---|
-| Visão geral | Quais hosts, VMs, serviços e dependências estão saudáveis, degradados ou sem dados? Há incidente de energia/storage? |
-| Compute e VMs | CPU, RAM real/pressão, swap/OOM, temperatura/throttling, I/O SSD, recursos provisionados, estado e tarefas Proxmox |
-| Storage e energia | Presença/identidade/geração USB, mount e export corretos, EIO/RO, latência, capacidade física/compromissos, fase/idade da recuperação, bateria do laptop e nobreak |
-| Media | Sessões, direct play/transcode, erros, banda e transcode/cache; métricas suportadas pela versão/API, sem presumir exporter pronto |
-| Automação | Último ciclo bem-sucedido, atraso, downloads/permits por estado, idade de importações/exclusões, bloqueios por capacidade e retomadas suspensas |
-| Acesso e mudanças | Falhas de login agregadas, decisões de bloqueio, alterações de ACL/VM/rede e resultado de tarefas; sem tokens ou histórico detalhado de consumo |
-| Observabilidade | Coletores/targets fora, idade dos snapshots, falhas de entrega, espaço/retenção e carga da própria stack |
+| CRUD/ACL reais | 14 checks, oito operações concluídas em VM descartável; criação idempotente, RAM, start/stop, ACL, negações, exclusão, auditoria e logout; VM removida |
+| TOTP real | Cinco checks incluindo desafio sem cookie, código errado negado, correto com Secure e ACL, logout; identidade de ensaio removida |
+| Coleta e alertas | Seis targets ativos, 22 painéis provisionados, falha real de duas fontes e resolução; nenhum alerta ativo ao final |
+| Navegador real | Portal em leitura, login/visões/ACL/atividades/logout e Grafana com sessão própria; desktop/390 px sem overflow ou exceções; 22 consultas sem erro, ALERTS vazio exibido como “Sem dados” |
+| Reboot do controle | Sessão anterior negada, histórico SQLite e banco Grafana preservados, quatro containers sem OOM e seis targets ativos; autostart ordem 5 |
+| Verificação local | 236 testes pytest, Ruff check/format e dez testes Node; onze grupos de cenários de navegador com API sintética |
+| Ainda pendente | Shutdown/reboot ACPI pelo portal com SO, consumo sob carga, manutenção SQLite, canal externo e sonda independente |
 
-Labels de métricas têm cardinalidade limitada: host, VM, serviço, pool e estado enumerado. Títulos de mídia, paths, infohashes, usuários e IDs de operação ficam fora das labels; detalhes sanitizados, quando necessários, pertencem a eventos com acesso restrito. Prometheus e exporters não são interfaces públicas.
-
-Alertas iniciais: USB ausente/identidade divergente, mount RO/EIO, recuperação sem progresso, pouco espaço, worker atrasado, OOM, temperatura alta, export indisponível, falha de autenticação anormal e nobreak em bateria/baixo nível/perda de comunicação. Cada regra precisa de duração, severidade, responsável, runbook e condição de resolução. Alarmes derivados dos consumidores são agrupados/suprimidos durante incidente conhecido de storage, sem esconder o alarme principal.
-
-O watchdog de recuperação mede **progresso persistido**, e não só existência do processo. Chamadas de filesystem podem bloquear; o monitor deve continuar lendo estado no SSD e sinalizar atraso. Se o compute inteiro travar, somente a sonda em outro domínio poderá detectar. A queda do próprio Grafana impede seus alertas: o teste externo deve cobrir isso.
-
-## 6. Aceite e evolução
-
-1. Criar, configurar, delegar acesso, desligar e excluir uma **VM de teste**; registrar tarefas e provar que o usuário delegado não alcança outra VM, host ou export.
-2. Mostrar a diferença entre configurar RAM/disco e o guest reconhecer a mudança; alteração que exige reboot aparece como pendente.
-3. Simular falta de dados e indisponibilidade do coletor: Grafana saudável mostra desconhecido/atrasado. Na falha do core, seu Grafana/Prometheus também podem parar; a evidência passa ao Proxmox e à sonda independente, quando existente. Confirmar acesso privado direto ao Proxmox nessa condição.
-4. Demonstrar que credenciais de observação não conseguem criar VM, mudar firewall ou executar ação no controlador; nenhuma credencial administrativa chega ao navegador via dashboard.
-5. Exercitar alerta e resolução com dados sintéticos, deduplicação, manutenção e canal escolhido. Um módulo de envio sem consumidor ativo não satisfaz o aceite.
-6. Medir a stack de observabilidade sob carga de mídia; incluir seu SSD/RAM no orçamento global e na [recuperação de energia/USB](power-recovery.md).
-
-Permanecem pendentes o canal de notificações, a identidade/MFA privada, políticas delegadas concretas e o orçamento medido. Controle completo é o requisito confirmado; esta composição de consoles e ferramentas é a solução proposta.
+Timeout, falha após envio, permissões revogadas e concorrência têm verificações
+sintéticas; nem todos foram induzidos no host real. CPU/RAM têm digest nativo,
+mas DELETE/energia/ACL conservam a janela externa descrita acima. Reconciliação
+sem UPID/prova pode requerer intervenção manual. O reboot isolado do controle
+não demonstra tolerância à queda do único host, à falha USB ou de energia.
+Controle avançado continua no caminho nativo com sua própria autorização.

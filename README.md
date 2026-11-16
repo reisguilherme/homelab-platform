@@ -1,12 +1,12 @@
 # Homelab Platform
 
-Infraestrutura compartilhada do homelab: arquitetura, contratos de integração,
-catálogo de projetos e observabilidade. Este repositório concentra as decisões
+Infraestrutura compartilhada do homelab: API e portal de governança, arquitetura,
+contratos de integração, catálogo de projetos e observabilidade. Este repositório concentra as decisões
 de compute, redes, armazenamento, acessos e energia. As aplicações mantêm seus
 próprios repositórios e entregam os manifests e as integrações que consomem essa
 infraestrutura.
 
-**Estado: host Proxmox e três VMs Ubuntu operantes em rede privada.** Core,
+**Estado: host Proxmox, três VMs de mídia e uma VM de governança.** Core,
 playback e edge têm QGA, SSH e NTP conferidos. A bridge de gestão foi preservada;
 NAT sem DNAT e filtros dos convidados passaram pelos testes TCP e de pacotes
 registrados. O reboot confirmou autostart ordenado, acesso e persistência dos
@@ -24,7 +24,18 @@ Reboot com SSD/lease passou, recusando a lease anterior. Readmissão exige açã
 prova nova; reboot do Proxmox pede auditoria do estado, sem promessa de retorno
 integral desassistido. Recuperação
 USB e publicação continuam pendentes; a automação de mídia permanece parada.
-Prometheus/Grafana estão preparados; K3s é futuro.
+Homelab-control já tem 2 vCPU, 2 GiB, SSD virtual de 24 GiB, QGA/SSH e nginx
+TLS. O core foi reduzido de 6 para 4 GiB após medição e parada limpa, mantendo
+11 GiB totais para os quatro guests. Exporters estão instalados nos quatro
+convidados. **API, portal, Prometheus e Grafana estão implantados com acesso
+privado por TLS.** CRUD, recursos, ACL, idempotência, negações de acesso e TOTP
+passaram em ensaios reais com contas e VM descartáveis. Os seis alvos de coleta
+estão ativos; 22 painéis foram provisionados e alertas de perda de fontes
+dispararam e resolveram no teste. O reboot do controle preservou auditoria,
+Grafana e coleta, invalidando a sessão anterior. Portal e dashboards passaram
+no navegador real, em desktop e mobile; não há alerta ativo na observação final.
+K3s é futuro. O [estado canônico](docs/implementation-status.md#plataforma-de-controle)
+registra o alcance das provas e os limites de operação.
 O [gerador de bootstrap](scripts/proxmox_bootstrap.py) produz um bundle offline,
 sem deploy; publicar arquivos não aplica alterações ao servidor.
 
@@ -32,8 +43,10 @@ sem deploy; publicar arquivos não aplica alterações ao servidor.
 flowchart TB
   P[homelab-platform] --> A[Arquitetura e políticas]
   P --> C[Contratos e catálogo por commit]
-  P --> O[Prometheus e Grafana privados]
-  P --> I[Proxmox e três VMs / rede privada aplicada]
+  P --> O[Prometheus e Grafana / coleta ativa]
+  P --> I[Proxmox e quatro VMs / rede privada aplicada]
+  I --> G[homelab-control / API e portal privados]
+  G --> O
   I --> S[Core com storage / playback com NFS RO]
   S --> J[Jellyfin privado / mídia somente leitura]
   S -. próximos aceites .-> R[Recuperação USB, publicação e energia]
@@ -59,6 +72,7 @@ flowchart TB
 | [VMs e rede privada](docs/runbooks/proxmox-guests.md) | Estado real, testes, geração offline, preflight e aplicação controlada |
 | [Storage no core](docs/runbooks/storage-core-handoff.md) | Identidade do HD, mount preservado e NFS RO para playback; alcance dos testes |
 | [Jellyfin na playback](docs/implementation-status.md#jellyfin-na-playback) | Restauração selecionada, isolamento, aceites e limites da aplicação |
+| [Governança privada](docs/runbooks/platform-governance.md) | API/portal implantados, operações reais verificadas e limites de administração |
 | [K3s](infrastructure/k3s/README.md) | Entrada posterior e fronteira com o hipervisor |
 
 O [repositório de mídia](https://github.com/reisguilherme/homelab-mediaserver/tree/refactor)

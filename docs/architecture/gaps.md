@@ -1,6 +1,11 @@
 # Gaps e evolução do homelab
 
-Data: 14/11/2026. Este backlog descreve trabalho futuro e evidência necessária. Não constitui autorização para modificar mounts, dispositivos, firewall do roteador ou serviços em produção. Esta separação prepara documentação, contratos e configuração opt-in; não implanta a topologia nem comprova os requisitos de runtime. Prioridades indicam dependência e impacto; não estimam esforço sem ensaio.
+Baseline de 14/11/2026, atualizado em **16/11/2026**. Este backlog distingue
+entregas aceitas de trabalho futuro e evidência ainda necessária. Não constitui
+autorização para modificar mounts, dispositivos, firewall do roteador ou
+serviços em produção. O estado de runtime abaixo resulta de ensaios específicos,
+não apenas da separação dos repositórios. Prioridades indicam dependência e
+impacto; não estimam esforço sem ensaio.
 
 Atualização de 15/11: indisponibilidade autorizada e checkpoint de mídia com
 cópia Windows, arquivos restaurados e 11 SQLite verificados, conforme o
@@ -23,11 +28,26 @@ segundo SSD e os USBs. As três VMs base estão em execução, com rede privada
 filtrada e autostart conferido após reboot; o segundo SSD permanece desmontado.
 O HD de 18 TB foi depois reconectado e entregue ao core, com mídia NFS RO para
 playback. O [estado atual](../implementation-status.md#storage-no-core-e-nfs-ro)
-registra as provas de rede e leitura/escrita em fixture. Restauração,
+registra as provas de rede e leitura/escrita em fixture. Restauração das demais
 aplicações, recuperação USB, restrição da gestão na LAN e publicação continuam
 pendentes. O
 [roteiro de passagem](../runbooks/proxmox-installation-handoff.md) preserva o
 histórico sem exigir repetir o ensaio do arquivo intacto ou iniciar workers históricos.
+
+**Revisão de governança, 16/11:** o proprietário reafirmou API e controle central
+próprios, com plataforma separada dos consumidores. Os nomes de mídia seguem
+`mediaserver-core`, `mediaserver-playback` e `mediaserver-edge`; `homelab` fica
+reservado à plataforma. `homelab-control` já foi criada com 2 vCPU, 2 GiB e
+24 GiB, após realocação medida do core de 6 para 4 GiB. QGA/SSH, rede e nginx
+TLS estão operantes, com API/portal, Prometheus e Grafana implantados. CRUD/ACL,
+TOTP, seis targets ativos, falha/resolução de coleta e reboot do controle
+passaram em ensaios reais. Portal e 22 painéis tiveram aceite visual em
+desktop/mobile. A auditoria é durável, mas não tem poda automática. O
+[plano concreto](../plans/2026-11-15-platform-governance.md) define rotas,
+identidade delegada, auditoria, dashboard e ensaios; o
+[estado atual](../implementation-status.md) continua sendo a fonte dos aceites
+aplicados. Jellyfin privado e transcode SSD já possuem evidência específica;
+isso não restaura toda a automação nem encerra os demais gaps.
 
 ## 1. Gaps priorizados
 
@@ -36,7 +56,7 @@ histórico sem exigir repetir o ensaio do arquivo intacto ou iniciar workers his
 | G01 | P0, antes da migração | Hardware e rede declarados → baseline real sanitizado | Conferir RAM útil, ocupação/saúde SSD, USB/UUID, NICs, IOMMU, IP WAN/CGNAT/IPv6 e ACLs sem publicar inventário bruto |
 | G02 | P0, antes da migração | Working tree extenso → versão reproduzível do corte | Identificar exatamente arquivos/imagens/configuração em uso e preservar alterações; não confundir HEAD com implantação |
 | G03 | P0, antes da exposição nova | Containers no mesmo host → edge/playback/core em VMs e zonas | Testes negativos bloqueiam gestão, core e LAN a partir da VM pública, tanto por IPv4 como IPv6 |
-| G04 | P0, aplicado parcialmente | NFS RO na playback testado em fixture; Jellyfin e edição privada ainda ausentes | Preservar negações de escrita no servidor e cliente; validar Jellyfin e funções privadas de metadados/legendas |
+| G04 | P0, aplicado parcialmente | NFS RO e Jellyfin privado aceitos no alcance registrado; edição privada ainda pendente | Preservar negações de escrita no servidor e cliente; validar funções privadas de metadados/legendas |
 | G05 | P0, separação de playback | Guard de ext4/UUID local → contrato de NFS para leitor | Entrada da playback recusa mount ausente/errado; não grava no diretório vazio local; reconexão não apaga biblioteca |
 | G06 | P0, manter integridade | Controller, banco, hardlinks e UUID locais → colocação preservada no core | Fixture temporária prova importação, hardlink, espaço, exclusão coordenada e USB ausente/estrangeiro no convidado |
 | G07 | P0, acesso público | Proxy e firewall presentes em código → controles efetivos comprovados | Origem externa testa login comum, admin negado, backend direto inacessível, headers/CSRF/token, WebSocket/Range; reboot/restart conserva regras |
@@ -52,11 +72,12 @@ histórico sem exigir repetir o ensaio do arquivo intacto ou iniciar workers his
 | G17 | P3, quando houver benefício | Compose de instância única → K3s seletivo | PV/afinidade/NetworkPolicy/segredos/healthchecks funcionam; control plane e workloads distribuídos por falhas físicas; sem migração massiva obrigatória |
 | G18 | P3, réplicas de controle | SQLite/WAL/arquivos locais → coordenação distribuída | Banco servidor, idempotência, lease/fencing, claims e capacidade transacionais; matar/reiniciar líder não duplica aquisição nem exclusão |
 | G19 | P0, fronteira destrutiva | Administrador validado pelo Jellyfin → autorização independente no core | Playback simulada como comprometida não consegue fabricar autorização de exclusão; origem/cookies separados, CSRF e confirmação privada de intenção verificados |
-| G20 | P1, operação inicial | Painéis de aplicação → controle completo de infraestrutura privada | Proxmox cria/configura/remove VM de teste, delega ACL por VM, acompanha resultado de tarefas e permanece acessível com core/Grafana fora; SO/rede/aplicação têm políticas próprias |
-| G21 | P1, operação inicial | Snapshots locais → métricas históricas, alertas e auditoria | Grafana/Prometheus dentro de orçamento medido, credenciais RO, ausência de dados explícita, alerta e resolução entregues; cobrir recuperação sem progresso e queda total por sonda independente quando disponível |
+| G20 | P1, aplicado parcialmente | API/portal privados; 14 checks reais de CRUD/ACL/recursos, oito operações concluídas, cinco checks TOTP, reboot e navegação aceitos | Ensaiar shutdown/reboot ACPI pelo portal em guest com SO; preservar ACLs, provas de tarefa e coordenação externa; timeout/reconciliação têm cobertura sintética, sem UPID pode exigir intervenção manual |
+| G21 | P1, aplicado parcialmente | Prometheus/Grafana com seis targets ativos, 22 painéis verificados no navegador, auditoria persistida e alerta/resolução reais | Medir carga; implementar manutenção/retenção SQLite; canal externo e sonda independente continuam sem aceite |
 | G22 | P0, continuidade de energia | HD perde AC enquanto compute segue na bateria → alimentação e parada coordenadas | Nobreak pendente dimensionado por carga/autonomia reais; HD energizado durante flush, consumidores param antes do core/host, retorno e perda de comunicação ensaiados; risco residual explícito enquanto não adquirido |
 | G23 | P0, migração USB/NFS | Recuperação local opt-in → coordenação Proxmox/core/clientes | Confirmar instalação atual sem presumir ativação; host/guest identificam mesmo disco, exports não servem fallback, clientes revalidam, pausas mantidas e falha repetida não libera geração antiga |
 | G24 | P0, retomada segura | Presença/tamanho e chamadas bloqueáveis → prova de dados e watchdog | Corrupção sintética de mesmo tamanho detectada no conjunto em risco; ausência de prova mantém tarefas afetadas paradas; I/O bloqueado gera alerta sem force-unmount ou restart infinito |
+| G25 | P1, base e aplicações aplicadas | Homelab-control com SSD próprio, core reduzido após medição e reboot do controle aceito → independência de operação sustentada | Preservar nomes/tags/pools e 11 GiB totais; medir com automação de mídia ativa; preflight thin antes de alocar, reserva de 32 GiB e margem nominal revisada, sem tocar no SSD preservado; não declarar HA |
 
 P0 é pré-requisito de um corte seguro ou da nova publicação; não implica corrigir o ambiente existente automaticamente. P2/P3 só entram quando surgir a necessidade. [As-is e evidências](as-is.md), [riscos detalhados](security.md).
 
@@ -65,9 +86,10 @@ P0 é pré-requisito de um corte seguro ou da nova publicação; não implica co
 Arquitetura, contrato e catálogo ficam na plataforma; manifests, exporter,
 dashboards e runbooks específicos ficam no consumidor. O
 [contrato obrigatório](../repositories.md) prepara parte de G14, sem implementar
-quotas, reservas, ACLs ou prontidão reais. Prometheus/Grafana separados preparam
-parte de G21, sem comprovar ativação, alertas, isolamento ou orçamento medido.
-O [guia concreto](../observability.md) delimita a cobertura inicial. G01–G24 não
+quotas, reservas, ACLs ou prontidão reais. A implantação de Prometheus/Grafana
+e os ensaios de coleta/alerta/visualização atendem parte de G21; carga e
+notificações externas ainda têm aceites próprios.
+O [guia concreto](../observability.md) delimita a cobertura inicial. G01–G25 não
 são encerrados apenas pela existência de arquivos ou por validação de schema.
 
 ## 2. Dependências das etapas
@@ -77,7 +99,9 @@ flowchart LR
     A[Baseline e decisoes: G01-G02] --> B[Energia, recuperacao e ensaio: G08, G22-G24]
     B --> C[VMs, RO, guards e contratos: G03-G06]
     C --> AUTH[Autoridade privada independente: G19]
-    AUTH --> D[Publicacao, carga e operacao: G07-G13, G20-G21]
+    C --> GOV[Governanca independente: G20-G21, G25]
+    AUTH --> D[Publicacao, carga e operacao: G07-G13]
+    GOV --> D
     D --> Q[Contrato por consumidor: G14]
     Q --> E[Hub independente quando necessario: G15]
     D --> F[Compute adicional e quorum: G16]
@@ -131,7 +155,7 @@ As mudanças futuras devem preservar os testes de download protegido, importaç�
 |---|---|---|
 | D01 | Público com login; gestão privada | Confirmado pelo proprietário |
 | D02 | Mídia RO no Jellyfin; alterações privadas | Confirmado para o to-be; muda a experiência de edição/legendas no corte futuro |
-| D03 | Proxmox + três VMs e Compose agora | Host e três VMs Ubuntu operantes, com QGA/SSH e autostart após reboot conferidos; Compose e aplicações ainda ausentes. K3s permanece futuro |
+| D03 | Proxmox + VMs e Compose agora | Três VMs de mídia e Jellyfin privado; homelab-control com RAM realocada, API/portal/Prometheus/Grafana implantados e reboot aceito. K3s permanece futuro |
 | D04 | Core agrupa storage + automação na primeira etapa | HD e NFS já no core; automação ainda ausente. Concentração de escritores privados mantém risco sobre o acervo |
 | D05 | Seerr privado inicialmente | Recomendação de escopo; pedidos públicos exigem incluir seus fluxos e riscos na borda |
 | D06 | Entrada pública existente, encaminhamento ou VPS/túnel | Pendente de inspeção IP/CGNAT/IPv6 e equipamento de rede; nenhuma porta nova autorizada aqui |
@@ -140,10 +164,11 @@ As mudanças futuras devem preservar os testes de download protegido, importaç�
 | D09 | Destino para recuperação e janela de migração | Checkpoint anterior e inicialização isolada de 13 serviços examinados em 15/11. Captura final ampliada selada e checksums conferidos no HD. Proprietário manteve o backup final só no HD: Windows final incompleto, novo ensaio integral dispensado antes de instalar. Proxmox instalado no SSD autorizado; segundo SSD desmontado e HD de 18 TB entregue exclusivamente ao core, com backup fora do export. Restauração e retomada pendentes; prontidão de produção continua falsa |
 | D10 | NAS dedicado e escolha de produto | Depois de confirmar recursos, GUI desejada, discos e rede; Linux NFS é o baseline, não decisão de comprar hardware |
 | D11 | Quais serviços merecem Kubernetes | Decidir por necessidade de operação/escala; Jellyfin, Arr e controlador não precisam migrar juntos |
-| D12 | Controle completo e visibilidade central | Requisito confirmado; proposta: Proxmox + Grafana + operação HomeServer em entrada privada; acesso direto Proxmox preservado |
+| D12 | Controle completo e visibilidade central | Reafirmado: API/portal próprios na homelab-control, operações pela API Proxmox com identidade delegada, Grafana/Prometheus e auditoria; recursos avançados e acesso de recuperação permanecem no console nativo |
 | D13 | Reintegração automática do USB | Requisito confirmado, condicionado a identidade, integridade, capacidade e readiness; casos inseguros permanecem em espera |
 | D14 | Nobreak | Aquisição pendente confirmada pelo proprietário; modelo, carga, autonomia, comunicação e religamento a verificar |
-| D15 | Alertas e identidade privada | Definir canal de notificações, MFA e papéis delegados; Grafana Alerting inicial proposto, sem canal operacional comprovado |
+| D15 | Alertas e identidade privada | Portal usa identidade/ACL Proxmox, com TOTP real aceito; token RO separado serve coleta/prova de capacidade. Alertas locais dispararam e resolveram no ensaio; canal externo e sonda independente permanecem pendentes |
+| D16 | Posse de recursos por projeto | VMs de mídia usam mediaserver; homelab identifica governança/observabilidade. Hub físico continua inicialmente no core, com posse de dispositivos/exports na plataforma e futura separação orçada |
 
 O desenho segue em camadas: D03 já tem host e VMs aplicados; fechar D04–D05 e os fluxos das aplicações, resolver D06–D09 conforme as etapas operacionais e manter D10–D11 como critérios de evolução. Não é necessário decidir agora a tecnologia de storage distribuído de um cluster que ainda não existe.
 

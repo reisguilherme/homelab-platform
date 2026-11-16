@@ -1,6 +1,16 @@
 # To-be do homelab
 
-Proposta de 14/11/2026, atualizada durante a implementação. O proprietário confirmou reprodução pública autenticada, administração privada, **Jellyfin sem escrita na mídia**, controle completo de VMs e reintegração automática do USB após falha. Nobreak é pendência de aquisição confirmada. Proxmox e as três VMs Ubuntu estão operantes, com QGA/SSH/NTP e rede privada filtrada. Os testes TCP e de pacotes passaram; autostart ordenado, acesso e filtros foram conferidos após reboot. O HD de 18 TB pertence exclusivamente ao core, que exporta mídia NFS RO para playback com negações de escrita testadas em fixture. Restrição da gestão na LAN, aplicações, restauração e recuperação USB continuam pendentes. Consulte o [estado da implementação](../implementation-status.md#storage-no-core-e-nfs-ro).
+Proposta de 14/11/2026, atualizada durante a implementação. O proprietário
+confirmou reprodução pública autenticada, administração privada, **Jellyfin sem
+escrita na mídia**, controle de VMs e reintegração automática do USB após falha.
+Nobreak é pendência confirmada. As três VMs de mídia estão operantes; Jellyfin
+privado lê NFS RO do core. A VM homelab-control foi depois criada, com QGA/SSH,
+rede filtrada e nginx TLS. Em 16/11, API, portal, Prometheus e Grafana estão
+implantados; CRUD/ACL, TOTP, coleta, alertas locais e reboot passaram em ensaios
+reais. Portal e Grafana passaram no navegador desktop/mobile; carga ainda
+requer ensaio. Demais aplicações de mídia, consolidação, publicação,
+restrição da gestão LAN e recuperação USB continuam pendentes. Consulte o
+[estado da implementação](../implementation-status.md#plataforma-de-controle).
 
 ## Fronteira entre plataforma e consumidor
 
@@ -26,13 +36,15 @@ Proxmox agenda e administra VMs. Kubernetes agenda pods dentro de VMs Linux que 
 
 ## 2. Fase inicial com um compute
 
-O diagrama abaixo permanece o destino funcional. Na base já aplicada existem
-as três VMs e uma bridge privada com NAT, sem DNAT. Core → playback:8096 e
-playback → core:2049 passaram inicialmente com listeners temporários; a etapa
-posterior aplicou NFS RO real do core à playback. Edge permanece sem acesso
-à playback ou à mídia. Ainda não há Jellyfin, proxy, GPU ou Docker nos
-convidados. O firewall do host mantém a gestão LAN existente, sem restrição
-nova; não interpretar o diagrama como aceite de publicação.
+O diagrama abaixo representa o destino funcional revisado em 15/11. As VMs de
+mídia são **mediaserver-core, mediaserver-playback e mediaserver-edge**; a
+plataforma já possui uma VM **homelab-control** própria. A base aplicada já possui
+rede privada com NAT sem DNAT, NFS RO do core à playback e Jellyfin privado.
+Edge permanece sem acesso à playback ou à mídia. API, portal e observabilidade
+estão implantados na VM de controle, com os aceites delimitados no
+[plano de governança](../plans/2026-11-15-platform-governance.md);
+o [estado da implementação](../implementation-status.md) distingue preparação
+e execução. Não interpretar o diagrama como aceite de publicação ou gestão LAN.
 
 ```mermaid
 flowchart TB
@@ -40,16 +52,22 @@ flowchart TB
     ADMIN[Administrador via acesso privado] --> MGMT[Rede de gestão]
     subgraph PVE[Um host Proxmox: i7 e 16 GB]
         FW[Firewall do hypervisor: negar por padrão]
-        subgraph EDGE[VM edge: entrada]
+        subgraph CONTROL[VM homelab-control: plataforma privada]
+            PORTAL[Portal e API de governanca]
+            OBS[Prometheus e Grafana]
+            AUD[(Operacoes e auditoria em SSD)]
+        end
+        PVEAPI[API Proxmox: ACL nativa e tarefas]
+        subgraph EDGE[VM mediaserver-edge: entrada]
             RP[Reverse proxy TLS]
         end
-        subgraph PLAY[VM playback: zona pública isolada]
+        subgraph PLAY[VM mediaserver-playback: zona pública isolada]
             GUARD[Política pública e relay delimitados]
             JF[Jellyfin: instância única]
             JDB[(Config e banco em SSD local)]
             TC[Transcode em SSD com limite]
         end
-        subgraph CORE[VM core: zona privada]
+        subgraph CORE[VM mediaserver-core: zona privada]
             AUTO[Controller API + worker + gateway]
             ARR[Arr + Bazarr + qBit + Seerr privado]
             CDB[(SQLite e appdata em SSD local)]
@@ -72,12 +90,26 @@ flowchart TB
     AUTO -->|gravação e exclusão coordenadas| FS
     AUTO -->|API fixa: atualizar biblioteca| JF
     MGMT -->|administração privada| FW
+    MGMT --> PORTAL
+    MGMT -->|console independente| PVEAPI
+    PORTAL -->|identidade delegada / HTTPS| PVEAPI
+    PORTAL --> AUD
+    PORTAL --> OBS
+    PVEAPI -. coleta somente leitura .-> OBS
     FW -.-> EDGE
     FW -.-> PLAY
     FW -.-> CORE
 ```
 
 As setas mostram fluxos permitidos, não conectividade irrestrita. O firewall deve aplicar as regras também entre VMs; uma bridge/vNIC adicional sem filtro não constitui isolamento. Os containers continuam segmentados dentro de cada VM. Edge não recebe mídia, `.env` global, banco de controle ou acesso ao Proxmox. O caminho administrativo é distinto do público e não é divulgado pelo proxy externo.
+
+**VM homelab-control:** API FastAPI e portal da mesma origem, operações e
+auditoria em SQLite local, coleta Proxmox, Prometheus e Grafana. Recebe acesso
+delimitado à API HTTPS do hipervisor; a identidade humana e suas ACLs autorizam
+as ações, enquanto a coleta usa identidade separada somente leitura. Não recebe
+mount do acervo nem credencial root SSH. Tags `homelab` ficam nessa camada;
+as VMs consumidoras usam `mediaserver`. Pools/tags classificam, mas não substituem
+ACLs e firewall. [Cobertura, autenticação e limites](operations.md).
 
 **VM core:** manter API, worker, gateway, qBit, Arr, Bazarr, Seerr privado e métricas de convidado. O USB pertence exclusivamente a ela. A automação continua vendo ext4, UUID e `/data` locais; os guards precisam ser ensaiados no convidado. O passthrough deve expor identidade estável verificável, nunca presumir nomes `/dev/sdX`. Não montar o mesmo filesystem para escrita simultaneamente no host e na VM.
 
@@ -99,19 +131,50 @@ Exclusões de mídia são solicitadas apenas pelo caminho administrativo privado
 
 ### Orçamento inicial de recursos
 
-| Destino | RAM fixa inicial | vCPU iniciais | Estado persistente |
+| Destino | RAM no desenho revisado | vCPU | Estado persistente |
 |---|---:|---:|---|
 | Proxmox e serviços de host | 3 GiB de orçamento | Reserva de capacidade do host | SSD, independente da VM storage |
-| Edge | 1 GiB | 1 | Disco virtual de 16 GiB; aplicação ainda ausente |
-| Playback | 4 GiB | 4 | Disco virtual de 80 GiB; aplicação/transcode ainda ausentes |
-| Core | 6 GiB | 4 | Disco virtual de 160 GiB e HD USB de 18 TB exclusivo; aplicação ainda ausente |
+| mediaserver-edge | 1 GiB | 1 | Disco virtual de 16 GiB |
+| mediaserver-playback | 4 GiB | 4 | Disco de sistema de 80 GiB e transcode de 32 GiB |
+| mediaserver-core | 4 GiB, redução aplicada após medição | 4 | Disco virtual de 160 GiB e HD USB de 18 TB exclusivo |
+| homelab-control | 2 GiB, realocados do core | 2 | Disco virtual novo de 24 GiB; API/auditoria, Prometheus e Grafana implantados por TLS privado |
 | Margem após orçamento do host | 1,49 GiB | — | Absorver picos e medir antes de ampliar |
 
-As três VMs já receberam essas alocações, ainda sem carga de aplicações. O host tem **15,49 GiB utilizáveis** e 6 núcleos/12 threads; os convidados somam 11 GiB e 9 vCPU escalonadas, não núcleos adicionais. O pool inicial de **348,82 GiB** comporta os **256 GiB** virtuais planejados e deixa **92,82 GiB (26,61%)** de reserva pelo tamanho completo dos discos; uso físico thin e margem sob carga precisam ser acompanhados. Os cerca de 85 GiB livres na raiz pertencem ao inventário anterior ao bootstrap. Os dois SSDs de 512 GB estão identificados: Proxmox ocupa o SSD autorizado, e o segundo conserva o UUID ext4 de mídia, desmontado. Saúde e capacidade sob carga continuam pendentes. Não presumir RAID, pool conjunto ou 1 TB disponível; limitar transcode dentro da capacidade real. Mirror de dois SSDs de 512 GB teria aproximadamente a capacidade de um deles; soma de capacidade sem réplica aumenta o impacto da falha de qualquer disco.
+O host tem **15,49 GiB utilizáveis** e 6 núcleos/12 threads. A implantação inicial
+alocou 6 GiB ao core, 4 GiB à playback e 1 GiB à edge. O novo desenho mantém
+**11 GiB totais de guests**. A redistribuição de 2 GiB do core para controle
+foi aplicada após medição, desmontagem normal do NFS na playback e parada
+limpa. Core/NFS e Jellyfin retornaram com identidades, recibo e catálogo
+preservados. As 11 vCPU são escalonadas, não núcleos adicionais. A automação
+ainda parada precisa de novo ensaio de capacidade quando voltar.
+
+O pool inicial tem **348,82 GiB**. Os discos originais somam 256 GiB; com
+transcode de 32 GiB são 288 GiB. O disco de controle de 24 GiB levou a soma
+nominal a **312 GiB**, além de poucos MiB de cloud-init, restando aproximadamente **37 GiB** pelo tamanho
+completo. Essa conta substitui a antiga reserva nominal de 20%; ela não comprova
+uso físico, espaço reservado, metadata disponível ou capacidade de snapshots.
+O preflight anterior à criação mediu 19,39% de uso físico e 1,09% de metadata.
+A reserva escolhida é de 32 GiB; o perfil de ensaio usa disco de 4 GiB. A VM
+descartável de aceite foi criada e removida, sem ampliar o compromisso permanente.
+Antes de cada nova operação, medir data/metadata do thin pool, ocupação real,
+crescimento e compromisso lógico. Monitorar os dois limites, sem contar todo espaço thin
+livre como crescimento garantido. Não ampliar discos nem usar o segundo SSD
+preservado para ocultar a redução de margem.
+
+Os dois SSDs de 512 GB estão identificados: Proxmox ocupa o SSD autorizado e o
+segundo conserva o UUID ext4 de mídia, desmontado. Não presumir RAID, pool conjunto
+ou 1 TB disponível. Saúde e capacidade sob carga permanecem aceites próprios.
 
 Se a carga real não couber, reduzir concorrência/tarefas auxiliares ou ampliar RAM; não tirar a separação entre playback público e core para acomodar Kubernetes. Para três ou mais VMs de infraestrutura adicionais, 32 GB ou mais pode tornar o projeto mais confortável, mas a escolha final depende da medição e do suporte físico do equipamento.
 
-Grafana/Prometheus são propostos dentro dos 6 GiB do core, com teto conjunto experimental de 1 GiB, reduzindo a fatia da automação. Não há RAM adicional implícita nem quarta VM já orçada. Medir antes de habilitar Loki, Immich ou mais coletores. Métricas/configuração ficam em SSD independente do USB; a administração nativa do Proxmox continua no host. [Orçamento e cobertura de operação](operations.md).
+Grafana/Prometheus estão na homelab-control: tetos de 384 MiB e 512 MiB,
+respectivamente. API/coletor têm teto inicial conjunto de 384 MiB; SO/cache usam
+a margem interna da VM de 2 GiB. São tetos, não garantia sob carga; o reboot
+retornou quatro containers sem OOM e seis targets ativos. O controle inicia
+em ordem 5, antes de core 10, playback 20 e edge 30.
+Métricas, configuração e auditoria ficam no SSD de controle, independentes do USB
+e do core. Loki, Immich e outros componentes exigem nova conta. O console nativo
+Proxmox continua independente da VM de controle. [Orçamento e cobertura](operations.md).
 
 ## 3. Rede e publicação
 
@@ -277,6 +340,14 @@ A disponibilidade pretendida inclui **reintegração automática para falhas USB
 
 ## 7. Operação, governança e energia
 
-O controle completo solicitado é atendido pela área privada com **Proxmox para VMs/recursos/ACLs/rede, Grafana para visibilidade consolidada e HomeServer para operações de mídia e recuperação**. Acesso ao hipervisor, conectividade de rede e contas dentro dos guests são políticas distintas. Coletores não têm poder de mutação. Proxmox permanece acessível pelo caminho privado independente de Grafana/core; uma interface própria para todas as funções não é pré-requisito para esse controle. [Desenho e matriz de ações](operations.md).
+A implementação do controle usa **API e portal próprios na homelab-control**,
+com CRUD de VMs por perfil, CPU/RAM, energia, ACL por VM, operações auditadas e
+dashboards. Proxmox é a autoridade das permissões e executor por sua API HTTPS;
+seu console mantém recursos avançados e acesso independente. Grafana centraliza
+telemetria e o consumidor mantém operações de mídia. Acesso ao hipervisor,
+conectividade e contas dentro dos guests são políticas distintas. Coletores não
+têm poder de mutação. O aceite real de CRUD/ACL/TOTP, coleta e reboot está
+registrado no [plano e aceites](../plans/2026-11-15-platform-governance.md); seguir a
+[matriz de ações](operations.md).
 
 A falha relatada de energia exige proteger também a fonte do HD. Nobreak para HD, carregador e rede necessária é pendência confirmada; software de recuperação não substitui essa alimentação. O projeto já contém recuperação USB local opt-in, sem comprovação de ativação: a migração precisa coordenar host → core → export NFS → clientes. Estado/monitoramento no SSD, guards de fallback, verificação de conteúdo afetado, manutenção preservada e bloqueio em caso de dúvida são requisitos. [Fluxo, limites e ensaios de recuperação](power-recovery.md).

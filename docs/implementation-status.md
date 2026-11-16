@@ -1,6 +1,6 @@
 # Estado da implementação
 
-Atualização documental: **15/11/2026**. A publicação inicial de 14/11 estabeleceu
+Atualização documental: **16/11/2026**. A publicação inicial de 14/11 estabeleceu
 a separação de repositórios na branch `refactor`. **O proprietário instalou
 Proxmox no SSD de sistema autorizado, e a entrega do host identificado e
 acessível pela rede privada está concluída.** Identidade SSH, sessão com chave
@@ -24,13 +24,22 @@ permanece falsa. O
 [roteiro de instalação assistida](runbooks/proxmox-installation-handoff.md)
 preserva a preparação e a passagem realizadas.
 
+Na etapa de governança, foi criada **homelab-control**, com 2 vCPU, 2 GiB e
+disco virtual de 24 GiB. O core passou de 6 para 4 GiB após medição e parada
+limpa; os quatro convidados mantêm 11 GiB no total. A base da VM, a rede e o
+nginx com TLS estão operantes. **API, portal, Prometheus e Grafana estão
+implantados, com operações reais, coleta, reboot e navegação desktop/mobile
+verificados.** Consulte
+[Plataforma de controle](#plataforma-de-controle) para o alcance desses ensaios.
+
 | Área | Preparado ou comprovado | Pendente |
 |---|---|---|
 | Arquitetura | Documentação geral canônica, diagramas e gaps | Aceite físico das hipóteses de isolamento e capacidade |
 | Integração | Schemas, template, validador local e catálogo por commit | Conformidade dos manifests e permissões efetivas por projeto |
-| Observabilidade | Compose independente com Prometheus/Grafana privados | Ativação, alvos, dashboards, consumo e ensaios no servidor |
+| Governança | API/portal privados implantados; 14 checks reais de CRUD/ACL/recursos/negações, 8 operações concluídas e 5 checks de TOTP; VM de teste removida; reboot e navegação reais aceitos | Shutdown/reboot ACPI em guest com SO e retenção SQLite; reconciliação ambígua exige investigação |
+| Observabilidade | Prometheus/Grafana implantados; 6 targets ativos, 22 painéis verificados no navegador, falha e resolução de coleta ensaiadas | Consumo sob carga, entrega externa e sonda independente do host |
 | Host Proxmox | Instalação no SSD autorizado, inventário e acesso privado SSH/HTTPS verificados; `vmbr0` preservada | Restringir gestão na LAN; o firewall do host mantém `enable: 0` |
-| VMs base | Core, playback e edge `running`, QGA/SSH/NTP operantes, cloud-init concluído; autostart ordenado conferido após reboot | Capacidade sob carga e prontidão das aplicações |
+| VMs base | Três VMs de mídia e homelab-control; QGA/SSH e cloud-init conferidos; core reduzido para 4 GiB, mantendo 11 GiB totais; reboot do controle aceito com autostart em ordem 5 | Capacidade sob carga; reboot isolado do controle não demonstra novo reboot integral do host |
 | Rede dos convidados | Bridge privada, NAT sem DNAT, firewall legado ativo; provas TCP/pacotes e persistência dos filtros após reboot conferidas | Revisão da WAN dinâmica, restrição da gestão LAN e aceite dos fluxos de aplicações |
 | Aplicações | Jellyfin privado, mídia RO e transcode em SSD de 32 GiB; encode curto por CPU, API, 18 logins/logouts e reboot com readmissão conferidos | Login interativo, cliente externo e capacidade sob carga; automação e GPU ausentes |
 | Hub de arquivos | HD exclusivo do core e NFS RO; guard e lease aplicados; expiração, HOLD, parada manual e recusa da lease de boot anterior testados | Recuperação USB automática e consolidação verificada |
@@ -43,6 +52,117 @@ no commit `2ac092cdb3f6e57e26505fc123f13f21d87cf141`, com contrato e Compose
 próprios no consumidor e aceite privado limitado ao descrito abaixo. O
 contrato do exporter não certifica o restante da stack de mídia, e validar um
 contrato não comprova implantação nem isolamento em runtime.
+
+## Plataforma de controle
+
+A VM **homelab-control** foi criada de imagem Ubuntu com hash previamente
+verificado: 2 vCPU, 2 GiB de RAM e disco virtual novo de 24 GiB, identificada
+pelas tags `homelab`, `governance` e `observability`. QGA, SSH e cloud-init
+foram conferidos. O único aviso do cloud-init foi a depreciação de `user` como
+string gerado pelo Proxmox. Isso não é erro de inicialização; o aceite das
+aplicações é registrado separadamente abaixo.
+
+Antes da criação, o uso físico do pool de aproximadamente 349 GiB era
+**19,39%**, com metadata em **1,09%**. Os discos virtuais, incluindo transcode
+e controle, somam agora **312 GiB**, além de poucos MiB de cloud-init. A margem
+pelo tamanho máximo é de cerca de **37 GiB**; foi escolhida reserva de
+**32 GiB**, com perfil de ensaio de 4 GiB. Espaço thin livre não equivale a
+reserva garantida: cada operação ainda precisa validar capacidade, metadata
+e compromisso lógico atuais.
+
+A redução do core de 6 para 4 GiB ocorreu após medição, desmontagem normal
+do NFS na playback e desligamento gracioso. Após o reboot, a chave SSH do
+core, o UUID do HD, o NFS e o recibo do backup foram preservados. A playback
+retornou saudável; os 807 registros originais de UserData e os seis registros
+novos observados permaneceram presentes. Os convidados somam 11 GiB, com o
+orçamento de 3 GiB do host e cerca de 1,49 GiB de margem preservado. Nenhum
+filesystem do acervo foi formatado nesta etapa.
+
+O nginx TLS está ativo na VM de controle. Seu certificado foi assinado pela
+CA existente do Proxmox e a chave privada permaneceu no guest. A origem
+privada por túnel local consta da ficha operacional; Grafana usa `/grafana/`.
+API, portal, Prometheus e Grafana foram implantados. A API e o coletor estão
+saudáveis, a coleta real está ativa e a revisão visual no navegador passou.
+Sessões Grafana e Proxmox continuam independentes.
+
+As regras de firewall e antisspoof foram aplicadas. O controle alcançou os
+exporters na porta 9100 dos quatro guests; controle → SSH do core/Proxmox
+foi negado. Edge e playback → controle nas portas 22, 8080, 8443 e 9100 também
+foram negados. A rodada final também confirmou edge/playback → controle
+negados por TCP em 22, 3080, 8080, 8443, 9090 e 9100. Esses testes delimitam
+os fluxos examinados; a restrição da gestão do host pela LAN continua pendente.
+
+Os exporters de nó estão instalados nos quatro convidados, somente para
+leitura. A credencial Proxmox com papel de auditoria também foi criada e
+permanece privada. Ela serve à coleta e à prova global de capacidade, por
+adapter somente GET; não autoriza mutações humanas. Cada operação usa a sessão
+delegada e as ACLs atuais do usuário no Proxmox. A UI passou em dez testes Node
+e onze grupos de cenários no Chrome, desktop e mobile, contra API sintética.
+Esses checks locais são distintos dos ensaios reais seguintes, de 16/11:
+
+- **14 checks de CRUD, com oito operações concluídas:** criação idempotente,
+  CSRF negado, RAM alterada de 384 para 512 MiB, concessão/revogação de ACL,
+  usuário de leitura sem poder de mutação nem visibilidade das VMs de mídia,
+  start/stop, exclusão, auditoria e logout. A VM descartável tinha 1 vCPU,
+  512 MiB e disco de 4 GiB, sem NIC ou SO; foi removida ao final.
+- **Cinco checks reais de TOTP:** matrícula efêmera no Proxmox, desafio antes
+  de criar cookie, código incorreto negado com desafio consumido, código
+  correto com cookie Secure e ACL respeitada, e logout. As identidades de
+  ensaio foram revogadas/removidas; os recibos permanecem privados.
+- **Seis targets Prometheus ativos:** quatro exporters de guests, coletor
+  Proxmox e o próprio Prometheus. O dashboard de infraestrutura tem 22 painéis,
+  com provisionamento e visualização real verificados.
+- **Falha real de coleta por 150 segundos:** coletor e exporter do controle
+  indisponíveis produziram `GuestExporterUnavailable` e
+  `ProxmoxCollectionUnavailable` em estado firing. Após restauração, os seis
+  targets voltaram e os alertas resolveram. Não havia alerta ativo na
+  observação final. Não foi testada entrega por canal externo.
+- **Reboot do controle:** mesma chave SSH e novo boot ID, cookie anterior
+  rejeitado, 34 eventos e nove operações SQLite preservados, quatro containers
+  em execução sem OOM, seis targets ativos e banco Grafana íntegro. O Proxmox
+  tem `onboot=1`, ordem 5, espera de partida de 20 s e desligamento de 60 s
+  para controle, antes de core 10, playback 20 e edge 30. Esse teste isolado
+  não repete o reboot completo do hipervisor nem aceita recuperação física USB.
+- **Navegador real:** portal com login de leitura, visão geral, lista/detalhe
+  de VMs, recursos/ACL, atividades e logout, em desktop e largura de 390 px,
+  sem overflow, exceções ou mutações. Grafana teve login/logout próprios, 22
+  painéis e 22 consultas HTTP 200 sem erro; 21 retornaram séries/linhas. A
+  consulta de alertas firing não tinha séries e mostrou “Sem dados”, sem
+  inventar saúde. Desktop/mobile passaram; capturas ficam privadas.
+
+A conferência final do Jellyfin encontrou container saudável e guard aprovado:
+32.373 BaseItems, 432 Permissions, 234 Preferences e 813 UserData (807 originais
+e seis adições preservadas), 18 senhas presentes, 20 tarefas ociosas, três
+bibliotecas sem realtime e nenhum scan ou erro de aplicação no intervalo
+observado. São contagens dessa conferência, não soma de ciclos de teste.
+
+A verificação local final passou em **236 testes pytest** em WSL/Python 3.12,
+Ruff check/format de 21 arquivos e dez testes Node da UI. Recibos, corpos HTTP,
+cabeçalhos e inventário real permanecem fora do Git.
+
+Login/TOTP usam POST por HTTPS, com formulários desabilitados até a instalação
+dos handlers e leitura da sessão. Credenciais não pertencem a URLs; o log do
+proxy omite query strings. O [runbook de governança](runbooks/platform-governance.md)
+preserva os procedimentos e as limitações dessa entrega.
+
+O portal coordena suas próprias intenções com lock e idempotência. Alterações
+paralelas pelo console/API externos não participam desse lock. CPU/RAM usam
+digest upstream; energia, exclusão e ACL não oferecem a mesma comparação
+atômica. Prévia e revalidação reduzem a janela de concorrência, sem eliminá-la.
+Coordenar essas mudanças com o console. Criação inicial entrega hardware
+desligado e sem NIC; SO, rede e operações avançadas continuam no Proxmox.
+
+G20/G21 foram atendidos parcialmente pelos ensaios acima. Permanecem pendentes
+shutdown/reboot ACPI pelo portal em guest com SO e medição
+sob carga. A auditoria SQLite não tem poda/retenção
+automática implementada; acompanhar sua ocupação. Uma
+criação sem resultado rastreável não libera repetição: permanece em
+reconciliação e bloqueia novas alocações no nó até prova ou investigação.
+Reconciliação sem UPID pode exigir intervenção manual. A publicação desta
+entrega no repositório ainda está pendente. USB, nobreak, entrada pública,
+automação Arr, GPU e HA conservam seus aceites próprios.
+
+## Checkpoints anteriores à instalação
 
 Na preparação inicial, havia apenas checkpoint privado de código/configuração,
 sem bancos consistentes, e a verificação da consolidação estava incompleta.
@@ -166,6 +286,11 @@ K3s permanece futuro. IPs, seriais, UUIDs, fingerprints e chaves ficam somente
 na ficha e nas evidências privadas.
 
 ## VMs e rede privada
+
+Esta seção preserva o bootstrap das três VMs de mídia. A criação posterior
+da VM de controle e a redistribuição de RAM estão em
+[Plataforma de controle](#plataforma-de-controle); não usar a margem inicial
+abaixo como espaço disponível atual.
 
 Esta etapa precede a [entrega do storage](#storage-no-core-e-nfs-ro).
 
@@ -379,8 +504,9 @@ correspondente. A tag `homelab` fica reservada à plataforma. IDs, discos e rede
 foram preservados. Como o metadata automático do cloud-init deriva também
 do nome, as identidades atuais foram fixadas em snippets próprios. O segundo
 reboot da playback preservou sua chave SSH; os próximos boots dos outros
-convidados ainda precisam dessa conferência. Esses nomes não significam que
-API, portal e dashboards da plataforma já estejam implantados.
+convidados ainda precisam dessa conferência. Renomeação não é prova de
+governança; a implantação e os ensaios posteriores de API/portal/dashboards
+estão registrados em [Plataforma de controle](#plataforma-de-controle).
 
 A lease implantada dura até **45 segundos**, vinculada
 ao boot do guest, e o consumidor a recusa se estiver ausente, inválida ou

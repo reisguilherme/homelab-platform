@@ -2,8 +2,10 @@
 
 Este diretório delimita a implementação da infraestrutura. O proprietário
 instalou Proxmox no SSD autorizado; identidade e acesso privado SSH/HTTPS foram
-verificados. Core, playback e edge já executam Ubuntu 24.04, com rede privada
-e acesso por SSH ProxyJump. Não há instalador automatizado do hypervisor; o
+verificados. Core, playback, edge e homelab-control executam Ubuntu 24.04, com
+rede privada e acesso por SSH ProxyJump. A base e nginx TLS do controle estão
+operantes; API/portal e Grafana ainda aguardam implantação e aceite.
+Não há instalador automatizado do hypervisor; o
 [gerador](../../scripts/proxmox_bootstrap.py) produz somente um bundle offline
 para revisão, usando um [perfil privado derivado do exemplo](profile.example.json).
 O [to-be](../../docs/architecture/to-be.md)
@@ -48,8 +50,10 @@ identificadores da infraestrutura e não são tags de propriedade das VMs.
 ## Host entregue e próximos passos
 
 O [roteiro de instalação assistida](../../docs/runbooks/proxmox-installation-handoff.md)
-registra a passagem física e a reconexão concluídas. As três VMs usam 11 GiB
-de RAM e discos virtuais de 160/80/16 GiB; o segundo SSD ext4 continua
+registra a passagem física e a reconexão concluídas. As três VMs iniciais usavam
+11 GiB de RAM e discos virtuais de 160/80/16 GiB. Hoje são quatro guests, ainda
+com 11 GiB após realocar 2 GiB do core para controle. Com transcode e controle,
+os discos somam 312 GiB, além de cloud-init; o segundo SSD ext4 continua
 desmontado. Após o bootstrap, o proprietário autorizou o HD de 18 TB
 exclusivamente no core, com inspeção RO antes de RW e preservação do conteúdo.
 A bridge privada tem NAT sem DNAT; o firewall legado está ativo
@@ -60,8 +64,11 @@ geração, preflight, aplicação e testes. O
 registra as provas TCP/pacotes e de reboot, com seus limites. Autostart ordenado,
 acesso e filtros persistiram após reboot. A
 [etapa de storage](../../docs/runbooks/storage-core-handoff.md) aplicou
-passthrough somente do dispositivo USB e NFS RO para playback; não há apps,
-Docker ou GPU nos convidados.
+passthrough somente do dispositivo USB e NFS RO para playback. Jellyfin já
+executa em Compose próprio na playback; demais aplicações de mídia e GPU
+continuam pendentes. O [runbook de governança](../../docs/runbooks/platform-governance.md)
+registra capacidade, rede e separação entre nginx ativo e aplicações ainda
+não implantadas na homelab-control.
 Os valores privados permanecem fora deste repositório.
 
 - Os dois SSDs já estão identificados no inventário privado. Confrontar

@@ -7,10 +7,12 @@ devem ser preservados. **A instalação foi concluída pelo proprietário no SSD
 autorizado, e a entrega do host identificado e acessível por SSH/HTTPS foi
 verificada.** A etapa posterior criou três VMs Ubuntu e a rede privada filtrada,
 com autostart após reboot conferido. Depois, o HD de 18 TB foi entregue
-exclusivamente ao core, com NFS RO para playback testado. Restauração,
-aplicações, recuperação USB automática e restrição da gestão na LAN continuam
+exclusivamente ao core, com NFS RO para playback testado, e Jellyfin privado
+foi aceito no alcance registrado. Depois foi criada homelab-control: base,
+rede e nginx TLS operantes, API/portal e Grafana ainda pendentes. Demais
+aplicações, recuperação USB automática e restrição da gestão LAN continuam
 pendentes, conforme o
-[estado atual](../implementation-status.md#storage-no-core-e-nfs-ro). O
+[estado atual](../implementation-status.md#plataforma-de-controle). O
 [registro canônico](../implementation-status.md#host-proxmox-entregue) contém
 o inventário sanitizado e o alcance das verificações.
 O proprietário decidiu manter o backup final completo somente no HD de 18 TB

@@ -1,0 +1,12 @@
+**
+!pyproject.toml
+!uv.lock
+!services/
+!services/control/
+!services/control/*.py
+!services/control/static/
+!services/control/static/*.html
+!services/control/static/*.js
+!services/control/static/*.css
+!services/telemetry/
+!services/telemetry/*.py

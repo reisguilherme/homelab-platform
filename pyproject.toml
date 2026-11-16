@@ -3,13 +3,20 @@ name = "homelab-platform"
 version = "0.1.0"
 description = "Local contracts and shared infrastructure documentation for a personal homelab"
 requires-python = ">=3.12,<3.13"
-dependencies = ["jsonschema>=4.23,<5", "referencing>=0.35,<1"]
+dependencies = [
+    "fastapi>=0.163.1",
+    "httpx>=0.28.1",
+    "jsonschema>=4.23,<5",
+    "referencing>=0.35,<1",
+    "uvicorn>=0.54.0",
+]
 
 [dependency-groups]
 dev = ["pytest>=8.3,<9", "PyYAML>=6.0,<7", "ruff>=0.6,<1"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 addopts = "-ra"
 
 [tool.ruff]

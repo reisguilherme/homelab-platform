@@ -8,6 +8,14 @@ A preparação posterior do Docker na playback está registrada abaixo. A
 restauração e a aplicação têm aceite próprio no repositório consumidor;
 recuperação automática de USB permanece pendente.
 
+Na etapa posterior de governança, o core foi reduzido de 6 para 4 GiB após
+medição, desmontagem normal do NFS na playback e desligamento gracioso.
+O retorno preservou chave SSH, UUID do HD, NFS e recibo de backup; Jellyfin
+voltou saudável, mantendo os 807 registros originais de UserData e os seis
+novos já observados. Isso é continuidade da manutenção planejada, não ensaio
+de perda física do USB. O orçamento e a VM de controle estão no
+[estado canônico](../implementation-status.md#plataforma-de-controle).
+
 ## Identidade e montagem local
 
 Modelo, serial, UUID e capacidade coincidiram nas inspeções do host e do core.

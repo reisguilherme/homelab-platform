@@ -16,31 +16,35 @@ foi interrompida, incompleta, e novo ensaio integral não será exigido antes de
 instalar. O segundo SSD mantém seu UUID ext4 e está desmontado. As três VMs
 base já executam Ubuntu, com rede privada filtrada e autostart conferido após
 reboot. O HD de 18 TB foi depois entregue exclusivamente ao core, com mídia
-exportada RO para playback e escrita negada em fixture. Restauração,
-aplicações, recuperação USB e restrição da gestão na LAN continuam pendentes,
-conforme o [estado atual](../implementation-status.md#storage-no-core-e-nfs-ro).
+exportada RO para playback e escrita negada em fixture; Jellyfin privado foi
+restaurado e aceito no alcance registrado. A quarta VM, homelab-control, tem
+base, rede e nginx TLS operantes; API/portal e Grafana aguardam implantação.
+Demais aplicações, recuperação USB e restrição da gestão LAN continuam
+pendentes, conforme o [estado atual](../implementation-status.md#plataforma-de-controle).
 A posse dos repositórios não implanta a nova topologia.
 
-A base aplicada é **um nó Proxmox e três VMs: entrada, reprodução e núcleo
-privado**. O core já concentra o mount local e exporta mídia RO para playback;
-Compose e aplicações ainda serão implantados. O destino funcional mantém
-storage e automação de mídia próximos para preservar as garantias atuais;
-Jellyfin receberá a mídia RO já disponível à sua VM.
+A base aplicada é **um nó Proxmox, três VMs de mídia e uma de governança**.
+O core concentra o mount local e exporta mídia RO para Jellyfin na playback.
+As demais aplicações de mídia continuam pendentes. Governança tem VM própria,
+com 2 GiB realocados do core após medição, sem depender do HD para sua futura
+persistência. O destino funcional mantém storage e automação de mídia próximos
+para preservar as garantias atuais.
 NAS dedicado e K3s são evoluções condicionadas a recursos, contratos e ensaios.
 
 | Documento | Conteúdo |
 |---|---|
 | [As-is](as-is.md) | Aplicação de referência, observação anterior e limites de evidência |
 | [To-be](to-be.md) | Alternativas, VMs, rede, storage, recursos e evolução para três nós |
-| [Operação](operations.md) | Controle completo privado, observabilidade, auditoria e orçamento |
+| [Operação](operations.md) | API/portal privados, limites do controle, observabilidade, auditoria e orçamento |
 | [Energia e recuperação](power-recovery.md) | Nobreak pendente, mecanismo local e coordenação host/core/NFS proposta |
 | [Segurança](security.md) | Ameaças, evidência estática, confiança e testes de isolamento |
-| [Gaps](gaps.md) | G01–G24, decisões, critérios de aceite, migração e retorno |
+| [Gaps](gaps.md) | G01–G25, decisões, critérios de aceite, migração e retorno |
 | [Repositórios](../repositories.md) | Fonte de cada artefato e contrato obrigatório dos consumidores |
 | [Contrato de integração](../integration-contract.md) | Schema e validação local; limites de autorização e readiness |
 | [Observabilidade preparada](../observability.md) | Configuração central opt-in e integração com exporters |
 | [Instalação assistida](../runbooks/proxmox-installation-handoff.md) | Histórico da passagem física e entrega do host com SSH/HTTPS verificados |
 | [Storage no core](../runbooks/storage-core-handoff.md) | HD preservado, export NFS RO e limites das provas de leitura/escrita |
+| [Governança privada](../runbooks/platform-governance.md) | Base entregue, aplicações pendentes e aceites por identidade/operação |
 
 Os diagramas ficam em Mermaid junto ao texto. Não há cópia do HTML antigo nem
 dependência de um render local para ler esta arquitetura.
@@ -49,13 +53,13 @@ dependência de um render local para ler esta arquitetura.
 
 | Item | Estado |
 |---|---|
-| Compute observado | i7-10750H, 6 núcleos/12 threads, 15,49 GiB utilizáveis; três VMs com 11 GiB de RAM e 256 GiB de discos virtuais; reserva planejada de 92,82 GiB no pool inicial; segundo SSD ext4 desmontado; capacidade sob carga ainda exige validação |
+| Compute observado | i7-10750H, 6 núcleos/12 threads, 15,49 GiB utilizáveis; quatro VMs com 11 GiB totais e 312 GiB nominais de discos, além de cloud-init; margem nominal aproximada de 37 GiB e reserva escolhida de 32 GiB; segundo SSD ext4 desmontado; capacidade sob carga ainda exige validação |
 | Mídia observada | HD USB de 18 TB entregue exclusivamente ao core, NFS RO para playback; a união histórica de quatro volumes não foi migrada integralmente |
 | Demanda | Até dez reproduções, upload anunciado de 300 Mbit/s; desempenho não medido |
 | Internet | IP público relatado; CGNAT, IPv6 e acesso externo não comprovados |
 | Público | Jellyfin com login individual; administração privada |
 | Escrita Jellyfin | As-is permite edições/legendas; NFS RO já testado na playback, aplicação e fluxo privado de alterações ainda pendentes |
-| Administração | Proxmox e três VMs criadas, SSH/HTTPS privados verificados; gestão LAN restrita, ACLs delegadas, Grafana e operações da aplicação ainda pendentes |
+| Administração | Proxmox e quatro VMs criadas; nginx TLS na homelab-control, API/portal e Grafana ainda não implantados; restrição da gestão LAN e aceites reais de autorização/operação pendentes |
 | Energia | Notebook na bateria e fonte do USB sem AC relatados; ensaio físico pendente |
 | Recuperação | Reintegração automática exigida após validações; identidade, integridade ou readiness incertas bloqueiam retomada |
 | Nobreak | Aquisição pendente; modelo, carga, autonomia e comunicação ainda não definidos |

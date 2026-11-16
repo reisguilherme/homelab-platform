@@ -1,0 +1,6 @@
+[
+  {"targets": ["192.0.2.10:9100"], "labels": {"guest": "mediaserver-core", "project": "mediaserver", "role": "core"}},
+  {"targets": ["192.0.2.20:9100"], "labels": {"guest": "mediaserver-playback", "project": "mediaserver", "role": "playback"}},
+  {"targets": ["192.0.2.30:9100"], "labels": {"guest": "mediaserver-edge", "project": "mediaserver", "role": "edge"}},
+  {"targets": ["192.0.2.40:9100"], "labels": {"guest": "homelab-control", "project": "homelab", "role": "control"}}
+]

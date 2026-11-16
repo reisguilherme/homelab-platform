@@ -1,0 +1,73 @@
+groups:
+  - name: homelab-platform
+    rules:
+      - alert: GuestExporterUnavailable
+        expr: up{job="guests"} == 0
+        for: 2m
+        labels:
+          severity: warning
+          owner: homelab
+        annotations:
+          summary: Exporter de convidado indisponível
+          description: Conferir processo, firewall privado e target. Processo do exporter vivo não prova saúde física de storage.
+          runbook_url: https://github.com/reisguilherme/homelab-platform/blob/refactor/docs/observability.md
+      - alert: GuestStorageEvidenceMissing
+        expr: absent(node_filesystem_size_bytes{job="guests",guest="mediaserver-core",mountpoint="/srv/external3"}) or absent(node_filesystem_size_bytes{job="guests",guest="mediaserver-playback",mountpoint="/srv/transcode"})
+        for: 2m
+        labels:
+          severity: warning
+          owner: homelab
+        annotations:
+          summary: Sem evidência de filesystem esperado
+          description: Conferir exporter, mount e coordenador; ausência da métrica não autoriza remontagem ou retomada automática.
+          runbook_url: https://github.com/reisguilherme/homelab-platform/blob/refactor/docs/observability.md
+      - alert: GuestFilesystemSpaceLow
+        expr: (node_filesystem_avail_bytes{job="guests",fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes < 0.10) and (node_filesystem_size_bytes > 0)
+        for: 5m
+        labels:
+          severity: warning
+          owner: homelab
+        annotations:
+          summary: Filesystem de convidado com menos de 10% disponível
+          description: Conferir espaço e limites; não limpar acervo ou bancos automaticamente.
+          runbook_url: https://github.com/reisguilherme/homelab-platform/blob/refactor/docs/observability.md
+      - alert: ProxmoxCollectionUnavailable
+        expr: up{job="homelab-pve"} == 0 or homelab_pve_collection_up == 0
+        for: 2m
+        labels:
+          severity: warning
+          owner: homelab
+        annotations:
+          summary: Coleta Proxmox indisponível ou incompleta
+          description: Conferir conectividade privada, TLS, ACL do coletor e idade dos dados. Não interpretar ausência como zero saudável.
+          runbook_url: https://github.com/reisguilherme/homelab-platform/blob/refactor/docs/observability.md
+      - alert: ProxmoxCollectionStale
+        expr: time() - homelab_pve_last_success_timestamp_seconds > 120
+        for: 1m
+        labels:
+          severity: warning
+          owner: homelab
+        annotations:
+          summary: Evidência Proxmox sem atualização completa
+          description: O endpoint HTTP pode estar vivo com coleta parada. Conferir a fonte antes de operar recursos.
+          runbook_url: https://github.com/reisguilherme/homelab-platform/blob/refactor/docs/observability.md
+      - alert: ProxmoxStorageSpaceLow
+        expr: (homelab_pve_storage_used_bytes / homelab_pve_storage_capacity_bytes > 0.85) and (homelab_pve_storage_capacity_bytes > 0)
+        for: 5m
+        labels:
+          severity: warning
+          owner: homelab
+        annotations:
+          summary: Storage Proxmox acima de 85% de uso observado
+          description: Conferir data/metadata thin, compromisso lógico e crescimento. Não apagar mídia para liberar espaço automaticamente.
+          runbook_url: https://github.com/reisguilherme/homelab-platform/blob/refactor/docs/observability.md
+      - alert: ProxmoxRecentTaskFailures
+        expr: homelab_pve_recent_tasks{state="failed"} > 0
+        for: 2m
+        labels:
+          severity: warning
+          owner: homelab
+        annotations:
+          summary: Tarefa recente Proxmox terminou com erro ou aviso
+          description: Consultar tarefas autenticadas no portal ou Proxmox. A janela cobre até 100 tarefas da última hora; não repetir operação incerta.
+          runbook_url: https://github.com/reisguilherme/homelab-platform/blob/refactor/docs/observability.md

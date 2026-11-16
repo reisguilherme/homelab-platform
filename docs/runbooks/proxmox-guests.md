@@ -1,11 +1,15 @@
 # VMs Ubuntu e rede privada no Proxmox
 
 Este roteiro registra a etapa posterior à [entrega do host](../implementation-status.md#host-proxmox-entregue).
-As três VMs já estão em execução, com sistema e acesso administrativo verificados.
-Elas ainda não executam Docker ou aplicações de mídia. Depois deste bootstrap,
-o HD de 18 TB foi entregue ao core e NFS RO foi aplicado para playback,
-conforme a [etapa de storage](storage-core-handoff.md). Publicação, restauração,
-GPU e recuperação automática USB permanecem pendentes.
+As três VMs de mídia foram entregues com sistema e acesso administrativo
+verificados. No bootstrap abaixo, ainda não havia Docker ou aplicações.
+Depois, o HD de 18 TB foi entregue ao core, NFS RO foi aplicado e Jellyfin
+foi aceito privadamente na playback. A etapa de governança criou uma quarta
+VM, `homelab-control`, e reduziu o core de 6 para 4 GiB após medição, mantendo
+11 GiB totais de guests. Sua base e nginx TLS estão operantes; API/portal e
+Grafana ainda não foram implantados. Consulte
+[storage](storage-core-handoff.md) e [governança](platform-governance.md).
+Publicação, demais aplicações, GPU e recuperação USB permanecem pendentes.
 
 ## Identidade no Proxmox e renomeação
 
@@ -74,11 +78,14 @@ hostname e DNS nem impede alterações deliberadas de identidade.
 | Playback | 4 | 4 GiB | 80 GiB | Ubuntu 24.04, QGA e SSH operantes |
 | Edge | 1 | 1 GiB | 16 GiB | Ubuntu 24.04, QGA e SSH operantes |
 
-Os discos somam 256 GiB dos 348,82 GiB do pool inicial: sobram 92,82 GiB
+Neste bootstrap, os discos somavam 256 GiB dos 348,82 GiB do pool inicial: sobravam 92,82 GiB
 planejados, ou 26,61%. Essa reserva considera os tamanhos virtuais completos;
 o uso físico de um thin pool muda com as escritas e exige acompanhamento.
-A RAM soma 11 GiB para convidados, 3 GiB de orçamento do host e 1,49 GiB de
+A RAM somava 11 GiB para convidados, 3 GiB de orçamento do host e 1,49 GiB de
 margem sobre os 15,49 GiB utilizáveis. Não é medição de capacidade sob carga.
+O orçamento atual, com transcode e controle, está no
+[to-be](../architecture/to-be.md#orçamento-inicial-de-recursos); não reutilizar
+a reserva nominal inicial como capacidade disponível hoje.
 
 Todas as VMs estão `running`, com QEMU Guest Agent respondendo, SSH por
 `ProxyJump` via host autenticado e NTP sincronizado. As chaves de host dos

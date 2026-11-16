@@ -53,6 +53,25 @@ próprios; o catálogo aponta para commits imutáveis e distingue proposta de ex
   desassistido.
   Recuperação USB e publicação continuam pendentes. A prova NFS RO não
   comprova integridade global do acervo.
+  A etapa seguinte criou `homelab-control` com 2 vCPU, 2 GiB e disco virtual
+  novo de 24 GiB; o core passou a 4 GiB após medição e parada limpa, mantendo
+  11 GiB totais de guests. Chave SSH, HD/NFS, recibo e catálogo foram
+  preservados no retorno. QGA/SSH, regras de rede e nginx TLS do controle
+  estão operantes; exporters de nó estão nos quatro convidados. API, portal,
+  Prometheus e Grafana foram implantados. CRUD, recursos, ACL, idempotência,
+  negações de acesso e TOTP passaram em ensaio real descartável. Seis targets
+  estão ativos; 22 painéis foram provisionados. Falha e recuperação de coletor
+  e exporter dispararam e resolveram os alertas locais. Reboot do controle
+  preservou estado e coleta, invalidando a sessão anterior; seu autostart usa
+  ordem 5, antes da mídia. Portal e Grafana passaram no navegador real em
+  desktop/mobile, com leitura sem mutações. Shutdown/reboot ACPI pelo portal
+  não foi ensaiado na VM descartável sem SO. SQLite não tem poda automática.
+  Seguir o [runbook de governança](docs/runbooks/platform-governance.md),
+  distinguindo credencial de leitura das sessões humanas. Não tratar UI
+  sintética, HTTPS ativo ou resposta 202 como operação concluída no Proxmox.
+  Criação inicial pelo portal é hardware desligado e sem NIC. O lock do
+  portal não coordena alterações externas pelo console; energia, exclusão
+  e ACL conservam janela entre revalidação e uso.
 - Dispositivos e escopo exatos precisam de autorização antes de alteração
   destrutiva. Preservar o acervo, origens e pausas manuais; não limpar mídia.
 - Não substituir fstab inteiro, ativar RTX, reescrever serviço Lenovo, abrir

@@ -1,0 +1,91 @@
+# Private governance project. Start homelab-observability to create metrics network first.
+name: homelab-control
+
+services:
+  control:
+    build:
+      context: .
+      dockerfile: services/control/Dockerfile
+    image: homelab-control:local
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    init: true
+    mem_limit: 256m
+    pids_limit: 128
+    restart: unless-stopped
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    environment:
+      PLATFORM_ORIGIN: ${PLATFORM_ORIGIN:?Set private HTTPS PLATFORM_ORIGIN}
+      PVE_URL: ${PVE_URL:?Set fixed HTTPS PVE_URL}
+      PVE_CA_PEM: ${PVE_CA_PEM:?Set the trusted public Proxmox CA PEM}
+      PVE_CAPACITY_TOKEN_ID: ${PVE_METRICS_TOKEN_ID:?Set the read-only capacity source identity}
+      PVE_CAPACITY_TOKEN_SECRET: ${PVE_METRICS_TOKEN_SECRET:?Set the read-only capacity source secret}
+      PVE_CAPACITY_ROLE: HomelabMetrics
+      PVE_WEB_URL: ${PVE_WEB_URL:?Set private HTTPS Proxmox console URL}
+      GRAFANA_URL: ${GRAFANA_URL:?Set private HTTPS Grafana URL}
+      CONTROL_DB_PATH: /var/lib/homelab-control/control.sqlite3
+      CONTROL_PROFILES_JSON: ${CONTROL_PROFILES_JSON:?Set reviewed server-owned VM profiles}
+      CONTROL_PROTECTED_VMIDS: ${CONTROL_PROTECTED_VMIDS:?Set protected VM identifiers}
+      CONTROL_ALLOWED_NODES: ${CONTROL_ALLOWED_NODES:?Set allowed Proxmox nodes}
+      CONTROL_VM_ID: ${CONTROL_VM_ID:-110}
+      CONTROL_DEPENDENCIES_JSON: ${CONTROL_DEPENDENCIES_JSON:?Set dependency labels as a JSON object}
+    ports:
+      - 127.0.0.1:8080:8080
+    networks: [egress]
+    volumes:
+      - type: bind
+        source: ${HOMELAB_CONTROL_DIR:-/srv/appdata/homelab-control}
+        target: /var/lib/homelab-control
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "2"
+
+  pve-metrics:
+    image: homelab-control:local
+    command: [python, -m, services.telemetry.collector]
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    init: true
+    mem_limit: 128m
+    pids_limit: 64
+    restart: unless-stopped
+    environment:
+      PVE_URL: ${PVE_URL:?Set fixed HTTPS PVE_URL}
+      PVE_CA_PEM: ${PVE_CA_PEM:?Set the trusted public Proxmox CA PEM}
+      PVE_METRICS_TOKEN_ID: ${PVE_METRICS_TOKEN_ID:?Set the separate read-only collector token identity}
+      PVE_METRICS_TOKEN_SECRET: ${PVE_METRICS_TOKEN_SECRET:?Set the read-only collector token secret}
+    networks:
+      egress: {}
+      metrics:
+        aliases: [homelab-pve-metrics]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9101/healthz', timeout=3).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "2"
+
+networks:
+  egress: {}
+  metrics:
+    external: true
+    name: homelab-metrics

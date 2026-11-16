@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Homelab · Controle</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script type="module" src="/static/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Ir para o conteúdo</a>
+  <section id="login-screen" class="login-screen" aria-labelledby="login-title">
+    <div class="login-story">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">H</span><span>homelab<span class="brand-sub">CONTROL PLANE</span></span></div>
+      <div class="login-intro"><span class="eyebrow">SEU SERVIDOR, À VISTA</span><h1>Visibilidade.<br>Controle.<br><span>Com contexto.</span></h1><p>Recursos, máquinas e acessos em um só lugar. Cada ação acompanhada até o resultado.</p></div>
+      <div class="topology" aria-hidden="true"><span class="topology-host">PROXMOX</span><div><span>compute</span><span>storage</span><span>serviços</span></div></div>
+      <p class="login-foot"><span class="status-dot"></span> Governança privada · Identidade Proxmox</p>
+    </div>
+    <div class="login-panel">
+      <div class="login-card"><span class="eyebrow">ACESSO ADMINISTRATIVO</span><h2 id="login-title">Entre no seu homelab</h2><p id="login-description" class="muted">Use sua identidade Proxmox. As permissões da sua conta acompanham cada operação.</p>
+        <form id="login-form" method="post" action="/api/v1/session">
+          <label for="username">Usuário e domínio</label><input id="username" name="username" autocomplete="username" placeholder="usuario@pve" required maxlength="200" spellcheck="false" autocapitalize="none">
+          <label for="password">Senha</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="1024">
+          <button class="button primary full" type="submit" disabled>Entrar <span aria-hidden="true">→</span></button>
+        </form>
+        <form id="totp-form" method="post" action="/api/v1/session/tfa" hidden>
+          <label for="totp">Código do autenticador</label><input id="totp" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6,8}" minlength="6" maxlength="8" required placeholder="000000">
+          <p class="field-help">Informe os 6 a 8 dígitos do seu TOTP. Outros métodos de segundo fator continuam disponíveis no console nativo.</p>
+          <button class="button primary full" type="submit" disabled>Confirmar acesso</button><button id="back-login" class="button quiet full" type="button">Voltar ao login</button>
+        </form>
+        <p id="login-error" class="form-error" role="alert" hidden></p>
+        <p class="login-note">Conexão privada. Senhas e credenciais Proxmox não são armazenadas neste navegador.</p>
+      </div>
+    </div>
+  </section>
+
+  <div id="workspace" class="workspace" hidden>
+    <aside class="sidebar" aria-label="Navegação principal">
+      <a href="#overview" class="brand"><span class="brand-mark" aria-hidden="true">H</span><span>homelab<span class="brand-sub">CONTROL PLANE</span></span></a>
+      <p class="nav-label">WORKSPACE</p>
+      <nav><button data-view="overview" class="nav-item active" aria-current="page"><span aria-hidden="true">◫</span> Visão geral</button><button data-view="vms" class="nav-item"><span aria-hidden="true">▤</span> Máquinas virtuais</button><button data-view="activity" class="nav-item"><span aria-hidden="true">↳</span> Atividades <span id="task-count" class="nav-count" hidden>0</span></button></nav>
+      <div class="sidebar-bottom"><p class="nav-label">CONSOLES</p><div id="console-links" class="console-links"><span class="muted">Disponíveis após a coleta</span></div><div class="session-card"><span class="avatar" aria-hidden="true">OP</span><div><strong id="session-user">Operador</strong><span>Sessão privada</span></div><button id="logout" class="icon-button" aria-label="Encerrar sessão" title="Encerrar sessão">↪</button></div></div>
+    </aside>
+    <div class="main-wrap"><header class="topbar"><span class="breadcrumb">PLATAFORMA <span>/</span> <strong id="breadcrumb-current">Visão geral</strong></span><div class="topbar-actions"><span id="source-badge" class="badge neutral">Aguardando dados</span><button id="refresh" class="button small quiet" title="Atualizar dados">↻ <span>Atualizar</span></button></div></header>
+      <main id="main" tabindex="-1">
+        <div id="global-notice" class="notice" role="alert" hidden></div>
+        <section id="view-overview" class="page-view" aria-labelledby="overview-title"><div class="page-heading"><div><p class="eyebrow">INFRAESTRUTURA</p><h1 id="overview-title">Tudo sob observação.</h1><p class="muted">O estado do seu homelab, com a origem e a idade de cada leitura.</p></div><button class="button primary" data-create>＋ Criar máquina</button></div><div id="overview-content" aria-live="polite"></div></section>
+        <section id="view-vms" class="page-view" aria-labelledby="vms-title" hidden><div class="page-heading"><div><p class="eyebrow">COMPUTE</p><h1 id="vms-title">Máquinas virtuais</h1><p class="muted">Recursos, ciclo de vida e permissões por máquina.</p></div><button class="button primary" data-create>＋ Criar máquina</button></div><div class="filter-bar"><label class="search-field" for="vm-search"><span aria-hidden="true">⌕</span><input id="vm-search" type="search" placeholder="Buscar por nome, projeto ou ID" autocomplete="off"></label><label class="sr-only" for="vm-filter">Filtrar por estado</label><select id="vm-filter"><option value="all">Todos os estados</option><option value="running">Em execução</option><option value="stopped">Desligadas</option></select><span id="vm-count" class="muted"></span></div><div id="vms-content"></div></section>
+        <section id="view-detail" class="page-view" aria-labelledby="detail-title" hidden><button id="back-vms" class="button quiet back-button">← Máquinas virtuais</button><div id="detail-content"></div></section>
+        <section id="view-activity" class="page-view" aria-labelledby="activity-title" hidden><div class="page-heading"><div><p class="eyebrow">RASTREABILIDADE</p><h1 id="activity-title">Atividades</h1><p class="muted">Uma solicitação aceita ainda precisa de um resultado confirmado.</p></div></div><div class="section-heading"><h2>Tarefas acompanhadas</h2><span class="muted">Nesta sessão do navegador</span></div><div id="operations-content"></div><div class="section-heading audit-heading"><h2>Auditoria</h2><span class="muted">Eventos visíveis à sua identidade</span></div><div id="audit-content"></div><button id="audit-more" class="button quiet" hidden>Carregar eventos anteriores</button></section>
+      </main><footer class="page-footer"><span>HOMELAB <span class="muted">/ controle privado</span></span><span id="last-update">Sem leitura confirmada</span></footer>
+    </div>
+  </div>
+  <dialog id="action-dialog" aria-labelledby="dialog-title"><div class="dialog-head"><div><p id="dialog-eyebrow" class="eyebrow">OPERAÇÃO</p><h2 id="dialog-title"></h2></div><button id="dialog-close" type="button" class="icon-button" aria-label="Fechar janela">×</button></div><div id="dialog-body"></div></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <noscript><p class="notice">Ative JavaScript para usar o portal. O console nativo do Proxmox continua independente.</p></noscript>
+</body>
+</html>
