@@ -118,7 +118,7 @@ def test_grafana_requires_its_own_credentials_without_anonymous_access():
     assert env["GF_AUTH_ANONYMOUS_ENABLED"] == "false"
     assert env["GF_USERS_ALLOW_SIGN_UP"] == "false"
     assert env["GF_ANALYTICS_REPORTING_ENABLED"] == "false"
-    assert env["GF_SERVER_SERVE_FROM_SUB_PATH"] == "true"
+    assert env["GF_SERVER_SERVE_FROM_SUB_PATH"] == "${HOMELAB_GRAFANA_SERVE_FROM_SUB_PATH:-true}"
     assert "/grafana/" in env["GF_SERVER_ROOT_URL"]
 
 

@@ -1,21 +1,107 @@
 # Estado da implementação
 
-## Entrada externa após resposta da operadora — 16/11/2026
+## Acesso integralmente privado por Tailscale — 16/11/2026
 
-O proprietário informou que a operadora não libera portas nem IP fixo para
-cliente PF e propôs Tunnel público/Tailscale privado. A análise da política
-oficial descartou recomendar Tunnel público padrão para o vídeo do Jellyfin;
-VPS foi proposta e recusada. Depois, o proprietário aceitou Jellyfin público em
-`https://streaming.greis.dev.br:10443/jellyfin/`, com DNS-01/DDNS, e serviços
-privados por Tailscale usando `greis.dev.br`. A proposta privada usa registros
-A para o IP Tailscale de `homelab-control` e proxy HTTPS na porta 443, sem
-resolvedor adicional. Certificados próprios, grants, vhosts, origens e regras
-para os backends ainda precisam de implantação e testes. Cloudflare é opcional;
-o domínio ainda não foi adicionado lá, conforme o proprietário. Provedor e
-automação DNS não foram escolhidos, nem houve migração de nameservers. Nenhum
-túnel, DNS ou firewall foi alterado nesta avaliação; a chegada histórica em
-10443 não comprova TLS ou reprodução atuais. Ver
-[domínios e acesso](architecture/access-domains.md).
+O proprietário revogou a publicação WAN, VPS e porta 10443. **Todos os nove
+serviços passam a usar Tailscale**, incluindo Jellyfin em
+`https://jellyfin.greis.dev.br/jellyfin/`, com redirecionamento a partir da raiz.
+O proprietário criou o A `jellyfin.greis.dev.br` para o IP Tailscale do controle.
+O novo vhost foi implantado com destino fixo
+controle → playback:8096, prefixo preservado e autenticação/administração
+nativas privadas. Mídia RO, lease e limites de recursos permanecem.
+Os nove hosts responderam HTTP 200 com TLS válido. Jellyfin também respondeu
+pelo Windows/Tailscale com DNS normal e redirecionamento da raiz. Logins de
+conta comum e administradora, identidades corretas, catálogo de vídeo e Range
+206 de 64 KiB passaram. A rota administrativa recusou a conta comum com 403.
+WebSocket retornou 101 com `Sec-WebSocket-Accept` exato usando o parâmetro
+canônico `ApiKey`; não foi habilitada a opção de APIs legadas. O 403 do teste
+anterior vinha do parâmetro legado `api_key`, desabilitado no Jellyfin 12.
+O bundle web instalado ainda usa esse parâmetro no socket e no download.
+Foi implantada uma adaptação limitada a `/jellyfin/socket` e
+`/jellyfin/Items/<GUID>/Download`: token único e válido vira Authorization
+moderna somente quando não há credencial explícita. Tokens malformados,
+duplicados e nomes de parâmetros codificados nessa adaptação são recusados.
+A opção legada do servidor permanece desabilitada. No aceite real final,
+WebSocket legado e canônico retornaram 101 com aceite exato; download legado
+retornou 206 com 64 KiB. Os nove vhosts mantiveram HTTP 200 com TLS válido.
+As duas sessões foram revogadas por logout. Reprodução interativa completa
+em cliente pelo novo nome ainda não foi aceita.
+
+Os três containers da entrada pública na edge foram parados e a conexão
+WAN foi recusada. Dois DNAT ativos, quatro hooks persistentes e três exceções
+dos guests foram removidos. Convergência do firewall e preservação de acesso
+controle/playback, SSH, NFS e masquerade foram conferidas. Não interpretar
+essa etapa como autorização para reutilizar os roteiros históricos de publicação.
+Por autorização posterior, a VM edge (122) foi desligada de forma limpa:
+`qm shutdown --timeout 30 --forceStop 0` terminou em cerca de seis segundos e
+o estado `stopped` foi conferido. `onboot` passou de 1 para 0; discos e demais
+configurações foram preservados. Após o desligamento, os nove domínios
+mantiveram HTTP 200 e TLS válido pelo Windows/Tailscale, com DNS normal.
+443 permaneceu aberta; 22, 8006, 8443, 8080, 3080, 9090 e 9100, fechadas.
+A rota privada não depende da edge.
+Somente o target do exporter da edge foi retirado do `file_sd` para refletir
+a parada intencional. Os cinco targets restantes ficaram ativos, incluindo
+core, playback, controle e coletor PVE; a regra geral de indisponibilidade
+permaneceu intacta. Prometheus não foi reiniciado e preservou seu container.
+O wildcard Let's Encrypt privado existente cobre os nove nomes. O certificado
+público foi retirado de uso; suas chaves permanecem privadas e sua métrica foi
+desativada. Não houve exclusão de mídia.
+
+Os oito domínios privados foram implantados no Nginx de `homelab-control`,
+com listener no IP Tailscale, HTTPS na porta 443 e sem resolvedor adicional.
+`homelab`, `grafana`, `proxmox`, `radarr`, `sonarr`, `bazarr`, `prowlarr` e
+`qbittorrent`, sob `greis.dev.br`, retornaram **HTTP 200 com cadeia TLS válida**
+localmente e pelo Windows/Tailscale, usando resolução DNS normal. API e
+Grafana mantêm seus backends em loopback; o Proxmox usa HTTPS com sua CA e nome
+validados. Os Arr preservam seus prefixos. qBit usa exclusivamente o proxy
+administrativo na porta 18080 do core. **Sete checks reais qBit passaram**:
+API anônima 403, login e consulta de versão autenticados, Origin incorreto
+recusado com 401 mesmo com Referer correto, sessão válida preservada e logout
+seguido de API 403. O 401 é a recusa de CSRF observada; não confundir com o
+403 de ausência de sessão. Host/SNI divergentes retornaram 421.
+
+O filtro do convidado admite pela interface Tailscale somente TCP 443 no IP
+do controle e nega o restante da entrada e todo encaminhamento vindo dessa
+interface. Pelo Windows/Tailscale, 443 conectou; **22, 8006, 8443, 8080, 3080,
+9090 e 9100 foram negadas**. Regras do Proxmox permitem do controle somente
+os backends administrativos necessários. O filtro tem carregamento anterior
+ao Tailscale, e Nginx espera pelo IP antes de iniciar. A persistência foi
+configurada. Um restart real do Nginx passou, com espera do IP antes de
+`nginx -t` e HTTP 200 após o retorno; não houve reboot de VM nesta etapa.
+A edge foi impedida de acessar controle:443, core:7878/18080 e PVE:8006/22.
+A política da conta Tailscale não foi alterada: teste por usuário sem grant
+continua pendente.
+
+Após backup privado, somente `control` e `grafana` foram recriados para as
+novas origens; os healthchecks passaram. Grafana usa a raiz de seu hostname.
+O site legado na porta 8443 foi preservado, mas a API aceita uma única origem
+e não oferece duas URLs equivalentes de login. A revisão precedeu a implantação;
+o helper guarda rollback e recibo privados, sem segredos no Git.
+
+O DNS permanece no Registro.br, em modo avançado. A mudança automática de
+servidores `a/b.auto.dns.br` para `a/b.sec.dns.br` pertence ao fluxo do
+Registro.br; não houve migração para Cloudflare. **Renovação DNS-01 do
+certificado privado continua manual.** DDNS residencial deixou de ser
+necessário, pois nenhum desses acessos depende da entrada WAN. A métrica
+de validade ativa é `private`; as duas regras de alerta foram validadas e
+carregadas, saudáveis e inativas. Aviso abaixo de 21 dias e crítico
+abaixo de 7 dias exigem 5 minutos; os alertas ficam somente no painel.
+Eles não executam renovação. Clientes precisam ingressar na tailnet e receber
+permissão efetiva; a conta Tailscale e seus grants não foram alterados.
+O destino 443 é compartilhado, com autorização separada em cada aplicação.
+Faltam reprodução interativa Jellyfin pelo novo nome privado, revisão dos grants e
+console/upload Proxmox. A suíte final Linux/Python 3.12.3 teve
+**478 testes aprovados e um ignorado**
+pela ausência local de `promtool`/imagem fixada; Ruff e formatação dos 29 arquivos
+passaram. Os testes locais não encerram os aceites operacionais restantes. Ver
+[domínios e acesso](architecture/access-domains.md) e
+[runbook privado](runbooks/private-domains.md).
+
+O caminho público em 10443 descrito nos relatos anteriores foi abandonado
+por decisão posterior do proprietário. Seus 33 checks TLS via NAT loopback,
+captura externa SYN/SYN-ACK e aviso de certificado no teste por IP são
+evidências históricas, não uma publicação que deva ser retomada. Não houve
+aceite final de login/reprodução por aquele domínio no 4G.
 
 ## Cliente web Abyss — 16/11/2026
 
@@ -31,7 +117,7 @@ container e manutenção do core permanecem. O procedimento e a revisão vigente
 ficam no [runbook do consumidor](https://github.com/reisguilherme/homelab-mediaserver/blob/refactor/docs/runbooks/abyss.md).
 O adiamento citado nos relatos anteriores abaixo é histórico.
 
-## Estado atual — 16/11/2026, publicação em ativação
+## Core e histórico da ativação — 16/11/2026
 
 O core mantém **oito processos nativos vivos**: Sonarr, Radarr, Prowlarr,
 Bazarr, Seerr, integration-proxy, qBittorrent e monitor. API, download gateway
@@ -67,18 +153,19 @@ negados e três logouts. Isso não comprova reprodução externa por TLS.
 Caddy definitivo, Nginx e guard estão Running, com rootfs RO, UID 1000 e
 capabilities ALL removidas; os limites de memória somam 448 MiB. O registro DNS
 A foi confirmado e o diretório ACME respondeu 200, inclusive a partir do Caddy.
-**Ainda não há certificado TLS.** ACME e acesso 4G às portas externas 80/443
+**Naquele diagnóstico, ainda não havia certificado TLS.** ACME e acesso 4G às portas externas 80/443
 deram timeout. WAN e vínculo dos mapeamentos foram conferidos; HTTP pelo domínio
 no desktop retorna 308, comprovando NAT loopback nesse cliente.
 
-O proprietário criou a regra **temporária WAN TCP 10443 → LAN TCP 443 do PVE**.
+O proprietário criou inicialmente a regra **WAN TCP 10443 → LAN TCP 443 do PVE**
+para diagnóstico; depois a aceitou como caminho público.
 O teste 4G nessa porta retornou `ERR_SSL_PROTOCOL_ERROR`; a captura validada em
 `nic1` registrou oito SYN de origem externa distinta para PVE:443, além dos
 controles LAN. Isso comprova chegada pela porta alternativa ao mesmo destino
 interno, ainda sem TLS. O diagnóstico das portas externas 80/443 concentra-se
 no caminho anterior à edge, sem distinguir definitivamente roteador de operadora.
 
-**Decisão histórica, substituída pela aceitação de 10443 acima:** o proprietário
+**Decisão histórica anterior à opção temporária por 10443:** o proprietário
 havia escolhido resolver primeiro 80/443 para usar a URL sem porta. Naquele
 momento, 10443 servia somente ao diagnóstico, sem preparação DNS-01. A consulta
 somente leitura mostrou firewall Off,
@@ -88,7 +175,7 @@ Access Control descrito no manual não aparece nessa UI. Nenhuma configuração
 foi alterada. O próximo passo então previsto era o suporte Brava verificar
 filtro ou reserva de 80/443 no equipamento do provedor ou a montante, sem
 atribuir causa definitiva à operadora. Essa investigação não condiciona a
-preparação agora aceita de 10443.
+preparação então aceita de 10443, posteriormente revogada em favor de Tailscale.
 
 A auditoria privada de **15/10/2026**, anterior à migração, já registrava timeout
 externo TCP 80/443 e resposta em 54443. O proxy antigo era uma TV box Armbian
@@ -106,7 +193,8 @@ segurança não foram alterados. Identidades e tokens permanecem privados.
 O túnel temporário de teste foi encerrado; o health do endpoint privado na
 porta 18096 respondeu HTTP 200. Isso não comprova acesso público.
 
-A publicação permanece em ativação, sem anúncio de disponibilidade pública.
+Esse diagnóstico precede a emissão e implantação TLS registradas no início
+deste documento; não descreve a disponibilidade atual dos nomes privados.
 O firewall mantém as proteções; a regra temporária no roteador não ampliou
 portas no PVE ou na edge.
 O diagnóstico TLS temporário do Caddy fica em arquivo privado 0600, limitado
@@ -177,10 +265,10 @@ verificados.** Consulte
 | Arquitetura | Documentação geral canônica, diagramas e gaps | Aceite físico das hipóteses de isolamento e capacidade |
 | Integração | Schemas, template, validador local e catálogo por commit | Conformidade dos manifests e permissões efetivas por projeto |
 | Governança | API/portal privados; CRUD/ACL/recursos/TOTP aceitos; shutdown/reboot/start via API em guest com SO comprovados; manutenção SQLite implantada | Controle de serviços dentro dos guests, melhoria visual e reconciliação ambígua |
-| Observabilidade | Seis targets ativos; 25 painéis provisionados por API (22 com revisão visual anterior); sinais Jellyfin/lease/frescor e alerta de coletor obsoleto disparado/resolvido | Revisão visual dos três painéis novos, consumo sob carga e sonda independente; canal externo adiado pelo proprietário |
+| Observabilidade | Seis targets ativos; 25 painéis provisionados por API (22 com revisão visual anterior); sinais Jellyfin/lease/frescor e alerta de coletor obsoleto disparado/resolvido; certificado privado com alertas 21/7 dias carregados | Revisão visual dos três painéis novos, consumo sob carga e sonda independente; canal externo adiado pelo proprietário; renovação DNS-01 manual |
 | Host Proxmox | Instalação no SSD autorizado, inventário e acesso privado SSH/HTTPS verificados; `vmbr0` preservada | Restringir gestão na LAN; o firewall do host mantém `enable: 0` |
 | VMs base | Três VMs de mídia e homelab-control; QGA/SSH e cloud-init conferidos; core reduzido para 4 GiB, mantendo 11 GiB totais; reboot do controle aceito com autostart em ordem 5 | Capacidade sob carga; reboot isolado do controle não demonstra novo reboot integral do host |
-| Rede dos convidados | Bridge privada, firewall ativo e DNAT limitado a TCP 80/443; isolamento/backend e proxy conferidos | Certificado TLS, reprodução externa e restrição da gestão LAN; persistência da nova publicação ainda sem ensaio de reboot |
+| Rede dos convidados | Nove nomes Tailscale com TLS; edge pública parada e DNAT/hooks/exceções removidos com convergência conferida; WAN recusada; restart Nginx com espera de IP aceito | Reprodução interativa Jellyfin privada, grants por usuário e restrição da gestão LAN; persistência após reboot de VM ainda não ensaiada |
 | Aplicações | Jellyfin privado, mídia RO e transcode em SSD de 32 GiB; encode curto por CPU, API, 18 logins/logouts e reboot com readmissão conferidos | Login interativo, cliente externo e capacidade sob carga; automação e GPU ausentes |
 | Hub de arquivos | HD exclusivo do core e NFS RO; guard e lease aplicados; expiração, HOLD, parada manual e recusa da lease de boot anterior testados | Recuperação USB automática e consolidação verificada |
 | Energia | Estados e regras de reintegração USB | Nobreak, comunicação, coordenação host/guest e teste de falhas |
@@ -196,9 +284,13 @@ contrato não comprova implantação nem isolamento em runtime.
 ## Continuidade operacional de 16/11
 
 A prioridade é [concluir core e consolidação](architecture/operational-priorities-2026-11-16.md).
-O [mapa greis.dev.br](architecture/access-domains.md) foi documentado: streaming
-público e administração privada. DNS, TLS dos nomes e entrada pública ainda
-não foram aplicados. Alertas ficam somente no painel por decisão do proprietário.
+O [mapa greis.dev.br](architecture/access-domains.md) agora determina nove
+nomes exclusivamente por Tailscale. Os oito administrativos foram aceitos;
+Jellyfin está implantado no mesmo ingresso, com autenticação comum/admin,
+negação administrativa à conta comum, catálogo/Range/WebSocket/logout aceitos.
+A publicação pública foi
+revogada. Alertas de validade do certificado privado estão no painel,
+conforme a decisão do proprietário, sem renovação automática.
 Inventário visual de discos, controles por serviço e melhoria do portal seguem
 pendentes, sem bloquear a recuperação do acervo.
 
@@ -318,9 +410,12 @@ novos observados permaneceram presentes. Os convidados somam 11 GiB, com o
 orçamento de 3 GiB do host e cerca de 1,49 GiB de margem preservado. Nenhum
 filesystem do acervo foi formatado nesta etapa.
 
-O nginx TLS está ativo na VM de controle. Seu certificado foi assinado pela
-CA existente do Proxmox e a chave privada permaneceu no guest. A origem
-privada por túnel local consta da ficha operacional; Grafana usa `/grafana/`.
+Na implantação inicial, Nginx no controle usava certificado assinado pela
+CA existente do Proxmox e a chave privada permanecia no guest. A origem
+privada por túnel local constava da ficha operacional; Grafana usava `/grafana/`.
+Essa entrada 8443 foi preservada, mas a origem atual mudou para os domínios
+Tailscale com Let's Encrypt e Grafana na raiz, conforme o registro inicial
+deste documento.
 API, portal, Prometheus e Grafana foram implantados. A API e o coletor estão
 saudáveis, a coleta real está ativa e a revisão visual no navegador passou.
 Sessões Grafana e Proxmox continuam independentes.

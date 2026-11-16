@@ -9,19 +9,52 @@ Estado observado em 16/11/2026: oito processos nativos do core estão vivos
 worker estão iniciados em manutenção, sem readmissão da automação. Os 734
 torrents continuam parados, um em `missingFiles`. Foram publicados 8.209 caminhos/6.023 arquivos
 únicos (5,449 TB), sem os dois aliases degradados. Origens permanecem preservadas
-e gatilhos Jellyfin contidos. Backend edge → playback:8096 e isolamento PVE
-foram comprovados; DNAT TCP 80/443 foi aplicado e 33 checks do proxy passaram.
-A publicação está em ativação, sem certificado TLS: 80/443 externas dão timeout;
-10443 recebeu conexões externas no diagnóstico, ainda sem HTTPS. A operadora recusou
-liberação das portas/IP fixo para PF, conforme relato posterior do proprietário.
-VPS foi recusada. O proprietário aceitou Jellyfin público em `:10443`, com
-DNS-01/DDNS, e serviços privados por Tailscale usando seus domínios. A proposta
-privada usa registros A para o IP Tailscale do controle e proxy HTTPS na porta 443,
-sem resolvedor adicional. Provedor de DNS e automação ainda não foram escolhidos;
-Cloudflare é opcional e nenhuma migração de nameservers foi aplicada. Não publicar vídeo
-pelo Tunnel público padrão da Cloudflare sem nova decisão informada:
-ver análise em `docs/architecture/access-domains.md`. Nenhuma alternativa foi
-implantada; 10443 continua sem aceite TLS/reprodução em produção. Consulte o
+e gatilhos Jellyfin contidos. O proprietário revogou a publicação WAN/VPS/10443:
+o desenho atual usa Tailscale para todos os nove serviços, inclusive Jellyfin
+em `https://jellyfin.greis.dev.br/jellyfin/`. O A desse nome foi criado para o
+controle Tailscale. Os nove hosts responderam HTTP 200 com TLS válido; o novo
+nome Jellyfin também passou por DNS normal no Windows/Tailscale, logins comum
+e administrador com identidades corretas, catálogo, Range 206 de 64 KiB e
+WebSocket 101 com aceite exato. A conta comum foi recusada na rota administrativa
+com 403; as duas sessões foram revogadas por logout. O teste usou `ApiKey`
+canônico, sem habilitar APIs legadas. O bundle web ainda usa `api_key` no
+socket e no download: o Nginx traduz esse token somente nessas duas rotas,
+sem substituir credenciais explícitas. A adaptação foi implantada; WebSocket
+legado retornou 101 com aceite exato e download legado, 206 de 64 KiB.
+Não declarar reprodução interativa completa.
+A rota direta
+controle → playback:8096 usa autenticação/administração nativas privadas e
+mantém mídia RO. Os três containers públicos estão parados; dois DNAT ativos,
+quatro hooks persistentes e três exceções dos guests foram removidos.
+Convergência do firewall e preservação de controle/playback, SSH, NFS e
+masquerade foram conferidas; a conexão WAN foi recusada. Depois, a VM edge
+(122) foi desligada de forma limpa, com `onboot=0`; discos e demais
+configurações foram preservados. Os nove domínios mantiveram HTTP 200 e TLS
+válido pelo Windows/Tailscale após o desligamento. O acesso privado não
+depende dessa VM.
+Não reabrir a entrada pública por automação ou pelos roteiros históricos.
+O wildcard Let's Encrypt privado já cobre os nove nomes. O certificado público
+foi retirado de uso, com chaves preservadas fora do Git e métrica desativada.
+Os oito domínios administrativos anteriores responderam HTTP 200 com cadeia TLS válida pelo
+Windows/Tailscale e DNS normal. Nginx privado escuta somente no IP Tailscale,
+na porta 443; portas 22, 8006, 8443, 8080, 3080, 9090 e 9100 foram negadas por
+esse caminho. qBit usa somente o proxy administrativo na porta 18080 do core.
+Sete checks reais qBit passaram: API anônima 403, login/versão, CSRF inválido
+401 mesmo com Referer correto, sessão preservada e logout seguido de 403.
+A edge foi impedida de acessar controle:443, core:7878/18080 e PVE:8006/22.
+O site legado 8443 foi preservado, com corte explícito
+das origens da API/Grafana; somente esses dois containers foram recriados.
+DNS continua no Registro.br em modo avançado, sem migração para Cloudflare.
+Renovação DNS-01 manual, revisão dos grants, console/upload Proxmox e aceite
+reprodução interativa Jellyfin pelo novo nome privado continuam pendentes. DDNS residencial não é
+necessário neste desenho. O restart real do Nginx passou com espera
+do IP antes de `nginx -t` e HTTP 200 depois; não houve reboot de VM.
+O certificado privado mantém alertas no painel: aviso abaixo de 21 dias e
+crítico abaixo de 7, ambos por 5 minutos. Eles não renovam TLS automaticamente.
+Clientes precisam integrar a tailnet e ter permissão; acesso ao destino 443
+compartilhado não concede autorização nas aplicações. Grants não foram alterados.
+Não publicar vídeo pelo Tunnel público padrão da Cloudflare sem nova decisão informada:
+ver análise em `docs/architecture/access-domains.md`. Consulte o
 [estado atual](docs/implementation-status.md); os relatos anteriores abaixo são
 históricos e não alteram os limites operacionais.
 

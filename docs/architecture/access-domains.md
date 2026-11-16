@@ -1,244 +1,194 @@
 # Domínios e acesso ao homelab
 
-**Nova informação do proprietário — 16/11/2026:** a operadora informou que
-não libera as portas nem IP fixo para cliente pessoa física. Depois de avaliar
-alternativas, o proprietário aceitou Jellyfin público em `:10443` e serviços
-privados com seus domínios por Tailscale. Isso substitui a espera por liberação
-de 80/443 como próximo passo; nenhum novo túnel ou DNS foi aplicado.
+## Desenho atual em 16/11/2026
 
-O Tunnel público padrão da Cloudflare não é a recomendação para transportar
-o vídeo do Jellyfin. A [documentação de roteamento](https://developers.cloudflare.com/tunnel/concepts/routing/)
-explicita que hostnames públicos nos planos Free, Pro e Business exigem um
-serviço pago específico para vídeo e arquivos grandes. A
-[política de vídeo](https://developers.cloudflare.com/fundamentals/reference/policies-compliances/delivering-videos-with-cloudflare/)
-distingue esse caso das rotas privadas. Desativar cache não transforma uma
-rota pública em privada.
+O proprietário revogou a publicação WAN, VPS e a porta 10443. **Todos os nove
+serviços passam a usar Tailscale**, inclusive Jellyfin em
+`https://jellyfin.greis.dev.br/jellyfin/`. A raiz do novo hostname redireciona
+para esse prefixo. O proprietário criou o registro A para o IP Tailscale do
+controle; o wildcard Let's Encrypt privado existente cobre o nome.
 
-**VPS recusada; URL com porta aceita pelo proprietário.** O endereço escolhido é
-`https://streaming.greis.dev.br:10443/jellyfin/`, com certificado ACME DNS-01 e atualização
-automática do DNS quando o IPv4 residencial mudar. Essa porta recebeu conexões
-externas no diagnóstico anterior; isso não comprova HTTPS/reprodução atuais.
-A escolha substitui a preferência anterior por URL sem porta. Preservar o
-guard público da edge e a administração privada. Ainda faltam certificado,
-renovação, DDNS e aceites de reprodução pelo endereço final.
+Os oito nomes administrativos anteriores responderam HTTP 200 com certificado
+válido localmente e pelo Windows/Tailscale, usando DNS normal. Sete checks
+reais qBit passaram: API anônima 403, login/versão autenticados, Origin
+incorreto 401 mesmo com Referer correto, sessão preservada e logout seguido
+de 403. O nono vhost Jellyfin foi implantado e respondeu HTTP 200 com TLS
+válido, inclusive por DNS normal no Windows/Tailscale. Logins comum e admin,
+identidades, catálogo de vídeo, Range 206 de 64 KiB e WebSocket 101 com aceite
+exato passaram. A conta comum recebeu 403 na rota administrativa; logout
+revogou as duas sessões. O WebSocket usou `ApiKey` canônico, sem habilitar APIs
+legadas. O bundle instalado usa `api_key` no socket e no download; uma adaptação
+restrita no Nginx converte somente esses dois usos em Authorization moderna,
+preservando a precedência de credenciais explícitas. WebSocket legado também
+passou com 101 e aceite exato; download legado retornou 206 de 64 KiB.
+Não há aceite de reprodução interativa completa em cliente pelo novo
+nome. Console/upload Proxmox e negações por
+usuário da tailnet continuam com aceites próprios.
 
-O [DNS-01](https://letsencrypt.org/docs/challenge-types/#dns-01-challenge)
-valida o domínio por TXT, sem depender da abertura de 80/443. Cloudflare é
-opcional: oferece uma API para automatizar DNS e certificados, mas não é
-requisito do Jellyfin, do domínio próprio ou do Tailscale. Se escolhida,
-seria usada para DNS/automação, mantendo o registro de streaming como
-[DNS only](https://developers.cloudflare.com/dns/proxy-status/), sem passar os
-vídeos pelo proxy. O proprietário informou que ainda não adicionou o domínio
-à Cloudflare. Provedor e automação DNS não foram escolhidos; nenhuma migração
-de nameservers foi aplicada ou escolhida.
+Os três containers da entrada pública na edge estão parados e a conexão WAN
+foi recusada. Dois DNAT ativos, quatro hooks persistentes e três exceções
+dos guests foram removidos; firewall convergiu, preservando
+controle/playback, SSH, NFS e masquerade. A antiga publicação não
+deve voltar automaticamente por reinício de serviços ou roteiros históricos.
+A VM edge (122) foi desligada de forma limpa e está `stopped`, com `onboot=0`;
+discos e demais configurações permanecem preservados. Os nove domínios
+mantiveram HTTP 200 e TLS válido pelo Windows/Tailscale após o desligamento;
+nenhum desses acessos privados depende da edge.
+O certificado público foi retirado de uso, com chaves preservadas privadamente
+e métrica de validade desativada. O certificado privado continua monitorado:
+aviso abaixo de 21 dias e crítico abaixo de 7, por 5 minutos, somente no painel.
 
-Os nomes administrativos terão HTTPS sem porta explícita, via Tailscale.
-A proposta inicial publica registros A com o IP Tailscale de `homelab-control`
-e reutiliza seu Nginx para a entrada privada em 443, sem resolvedor adicional.
-Os nomes ficam consultáveis no DNS público, mas o acesso exige Tailscale e
-permissão efetiva; isso não publica os serviços na WAN. Jellyfin permanece
-público em 10443 e mantém seu registro A para o IPv4 residencial. Esse desenho
-não elimina o limite do upload residencial.
+DNS permanece no Registro.br em modo avançado. **A renovação DNS-01 do
+certificado privado ainda exige intervenção.** DDNS residencial não é
+necessário neste desenho, pois os acessos não dependem da entrada WAN.
 
-### Diagnóstico anterior à resposta da operadora
+## Nomes e caminhos
 
-**Atualização em 16/11/2026:** backend edge → playback e isolamento de rede
-comprovados; 33 checks do proxy passaram, incluindo login comum e negações admin.
-DNAT TCP 80/443 aplicado sem reload e HTTP 308 para HTTPS correto pela LAN.
-DNS A, WAN e vínculo dos mapeamentos foram conferidos; NAT loopback HTTP funciona
-no desktop. **Ainda não há certificado TLS**; ACME e 4G nas portas externas
-80/443 deram timeout. A regra temporária WAN 10443 → LAN 443 foi criada: o teste
-4G deu erro de protocolo SSL e a captura validada registrou oito SYN externos
-distintos chegando a PVE:443. A porta alternativa chega ao mesmo destino interno;
-isso ainda não distingue roteador de operadora na falha de 80/443.
-Naquele momento, o proprietário escolheu resolver **80/443 e a URL sem porta**
-primeiro, mantendo 10443 somente para diagnóstico. Essa decisão foi substituída
-pelo aceite de 10443 descrito acima; a ausência de TLS/reprodução aceitos permanece.
-Consulta RO: firewall Off, proteção contra ataques Enable, controle parental
-desmarcado e tabela IP Filter vazia; Access Control não aparece na UI. O próximo
-passo então previsto era suporte Brava conferir filtro/reserva de 80/443 no
-equipamento ou a montante.
-Auditoria de 15/10 já registrava timeout externo 80/443 e resposta em 54443.
-O proxy antigo era TV box Armbian na mesma LAN, com WAN 54443 → LAN 443 e DNS-01;
-em 18/10 houve HTTP 200 externo/TLS válido nessa porta alta. A falha padrão
-precede a migração, mas ainda não comprova responsabilidade da operadora.
-`streaming.greis.dev.br` permanece em ativação, sem anúncio de disponibilidade.
-Não se declara implantação dos nomes administrativos privados.
+Todos os destinos usam HTTPS na porta 443 do IP Tailscale de `homelab-control`.
 
-Desenho solicitado em **16/11/2026**, em implantação parcial. O proprietário possui
-`greis.dev.br` e definiu Jellyfin público autenticado e administração privada.
-Na proposta inicial dos novos nomes privados, o cliente usa Tailscale inclusive
-na LAN. Este documento registra os nomes e as fronteiras; não aplica DNS,
-certificados, proxy, ACLs ou regras de roteador. A prioridade continua sendo
-[concluir o core e consolidar a mídia no HD de 18 TB](operational-priorities-2026-11-16.md).
-
-## Nomes solicitados
-
-Todos os destinos abaixo são o desenho desejado para os novos nomes. Um serviço
-já responder por seu endereço atual não comprova que o domínio esteja operante.
-
-| Nome | Aplicação | Acesso desejado | Caminho proposto |
-|---|---|---|---|
-| `streaming.greis.dev.br` | Jellyfin | Público em HTTPS na porta 10443, com autenticação da aplicação | Proxy público na edge → Jellyfin na playback |
-| `radarr.greis.dev.br` | Radarr | Tailscale, HTTPS na porta 443 | Nginx privado no controle → aplicação no core |
-| `sonarr.greis.dev.br` | Sonarr | Tailscale, HTTPS na porta 443 | Nginx privado no controle → aplicação no core |
-| `bazarr.greis.dev.br` | Bazarr | Tailscale, HTTPS na porta 443 | Nginx privado no controle → aplicação no core |
-| `proxmox.greis.dev.br` | Console/API Proxmox | Tailscale, HTTPS na porta 443 | Nginx privado no controle → HTTPS do Proxmox |
-| `grafana.greis.dev.br` | Grafana | Tailscale, HTTPS na porta 443 | Nginx privado no controle → Grafana em loopback |
-| `homelab.greis.dev.br` | Portal e API da plataforma | Tailscale, HTTPS na porta 443 | Nginx privado no controle → portal/API em loopback, na mesma origem |
-
-Os nomes opcionais abaixo são propostas adicionais, sem confirmação de adoção:
-
-| Nome opcional | Aplicação | Limite proposto |
+| Nome | Aplicação | Backend privado |
 |---|---|---|
-| `qbittorrent.greis.dev.br` | Administração qBittorrent | Privado por Tailscale, pelo proxy administrativo; não publicar a porta administrativa nativa na WAN |
-| `seerr.greis.dev.br` | Seerr | Privado por Tailscale; acesso público exigiria uma decisão própria |
+| `jellyfin.greis.dev.br` | Jellyfin | Controle → playback:8096, prefixo `/jellyfin/` |
+| `radarr.greis.dev.br` | Radarr | Controle → core:7878, prefixo `/radarr/` |
+| `sonarr.greis.dev.br` | Sonarr | Controle → core:8989, prefixo `/sonarr/` |
+| `bazarr.greis.dev.br` | Bazarr | Controle → core:6767, prefixo `/bazarr/` |
+| `prowlarr.greis.dev.br` | Prowlarr | Controle → core:9696, prefixo `/prowlarr/` |
+| `qbittorrent.greis.dev.br` | Administração qBittorrent | Controle → proxy administrativo `qbit-monitor`, core:18080 |
+| `proxmox.greis.dev.br` | Console/API Proxmox | Controle → Proxmox:8006, com CA e nome TLS verificados |
+| `grafana.greis.dev.br` | Grafana | Controle → Grafana em loopback, raiz `/` |
+| `homelab.greis.dev.br` | Portal e API | Controle → portal/API em loopback, na mesma origem |
 
-## Separação das entradas
+`seerr.greis.dev.br` continua como possibilidade futura. Não publicar a porta
+administrativa nativa do qBittorrent na WAN. O nome público antigo
+`streaming.greis.dev.br:10443` deixou de ser uma entrada do desenho atual.
+
+## Entrada privada e autorização
 
 ```mermaid
 flowchart LR
-    INTERNET[Internet] -->|HTTPS 10443 → 443 interna| EDGE[Proxy público na edge]
-    EDGE --> JELLYFIN[Jellyfin na playback]
-    ADMIN[Cliente autorizado com Tailscale] -->|HTTPS 443| PRIVATE[Nginx privado no homelab-control]
-    PRIVATE --> CORE[Aplicações administrativas no core]
-    PRIVATE --> CONTROL[Portal / API / Grafana no controle]
-    PRIVATE --> PVE[Gestão Proxmox]
+    CLIENT[Cliente autorizado com Tailscale] -->|HTTPS 443| PRIVATE[Nginx no homelab-control]
+    PRIVATE -->|HTTP 8096 /jellyfin/| JELLYFIN[Jellyfin na playback]
+    PRIVATE --> CORE[Arr e proxy administrativo qBit no core]
+    PRIVATE --> CONTROL[Portal / API / Grafana em loopback]
+    PRIVATE -->|HTTPS com CA verificada| PVE[Gestão Proxmox]
+    JELLYFIN -->|Somente leitura| MEDIA[Acervo no hub]
 ```
 
-O diagrama distingue o destino desejado do backend já aceito; não comprova
-publicação externa nem implantação dos nomes privados. O
-proxy público recebe somente a rota de Jellyfin. Não recebe rotas administrativas,
-credenciais Proxmox, bancos de controle ou mounts de mídia. As entradas privadas
-devem continuar acessíveis aos administradores sem depender do proxy público.
-A proposta reutiliza o Nginx de `homelab-control`, com listener no IP/interface
-Tailscale e destinos de backend limitados por serviço. Não exige nova VM,
-resolvedor DNS, exit node ou anúncio de toda a rede dos convidados. As regras
-e os aceites devem respeitar as [fronteiras da plataforma](operations.md) e
-dos consumidores. O acesso atual de gestão deve continuar disponível durante
-a migração dos nomes.
+Jellyfin passa diretamente do controle para a playback. Autenticação e
+administração são nativas da aplicação dentro da tailnet: uma conta comum
+continua comum e uma conta administradora conserva suas permissões. Essa rota
+privada não usa o guard público da edge. Mídia RO, lease, contenção de scans e
+limites de recursos permanecem; mudar a entrada não autoriza escrita no acervo.
 
-A administração do próprio Jellyfin também permanece privada. A rota
-`streaming` deve cumprir o contrato público do consumidor e negar operações
-administrativas, inclusive para uma sessão com privilégios elevados. Não basta
-ocultar links da interface ou dar outro nome DNS ao mesmo backend. O aceite
-deve conferir a reprodução pública e essas negações separadamente; exclusões
-continuam sujeitas à autoridade independente do core descrita no
-[to-be](to-be.md).
+Clientes de reprodução e administração precisam integrar a tailnet e ter
+permissão de acesso. Não basta conhecer o domínio ou a senha do Jellyfin se
+o dispositivo não tem conectividade autorizada pelo Tailscale. Grants de rede
+para o mesmo IP/porta controlam o destino compartilhado, sem distinguir os
+nove hostnames HTTPS. A autenticação e a autorização de cada aplicação
+continuam separadas. A política da conta Tailscale não foi alterada nesta etapa.
 
-DNS informa o destino, TLS autentica o servidor e protege o transporte, e a
-autenticação da aplicação identifica quem pode usá-la. Um domínio próprio e um
-certificado válido não autorizam usuários nem fecham portas. As sessões, TOTP,
-CSRF e ACLs existentes precisam continuar funcionando com a nova origem; a LAN
-também precisa de restrições de gestão. O acesso Tailscale exige política efetiva
-e testes de permissão/negação, ainda sem evidência para estes nomes.
+A entrada privada reutiliza Nginx no controle, sem VM adicional, resolvedor,
+exit node ou anúncio de toda a rede dos convidados. O listener é o IPv4
+específico do Tailscale; não usa `0.0.0.0` nem IPv6. O firewall do guest admite
+pela interface `tailscale0` somente TCP 443 nesse IP e recusa as demais
+entradas e todo encaminhamento vindo dela. O controle recebe acesso apenas
+aos backends necessários: quatro Arr, proxy qBit na porta 18080,
+playback:8096 e HTTPS Proxmox. Ver o [runbook privado](../runbooks/private-domains.md).
+
+Pelo Windows/Tailscale, 443 conectou; 22, 8006, 8443, 8080, 3080, 9090 e 9100
+foram negadas. A edge também foi impedida de acessar controle:443,
+core:7878/18080 e PVE:8006/22. Host/SNI divergentes retornaram 421.
+Esses testes não equivalem a uma revisão dos grants por usuário ou a um teste
+de toda a LAN. A restrição de gestão na LAN continua uma pendência própria.
 
 ## DNS e certificados
 
-A consulta pública somente leitura realizada pela coordenação em 16/11/2026
-retornou `a.auto.dns.br` e `b.auto.dns.br` como servidores autoritativos de
-`greis.dev.br`, correspondentes ao DNS do Registro.br. Isso não comprova acesso
-à conta, disponibilidade de API, integração de renovação ou registros dos sete
-serviços. Não se presume Cloudflare nem outro provedor de automação.
+Os registros A dos nove nomes apontam para o IP Tailscale do controle. Esse
+uso de [registros públicos](https://tailscale.com/docs/reference/dns-in-tailscale#public-dns-records)
+torna os nomes consultáveis, mas não oferece conectividade pública ao destino.
+Tailscale precisa estar ativo no cliente, inclusive dentro da LAN. Não é
+necessário anunciar a rede inteira dos convidados para esse acesso.
 
-A proposta inicial é publicar registros A dos nomes administrativos para o
-IP Tailscale de `homelab-control`. O Tailscale documenta esse uso de
-[registros DNS públicos](https://tailscale.com/docs/reference/dns-in-tailscale#public-dns-records):
-consultar o nome é público, mas conectar ao destino continua exigindo acesso
-à tailnet. A política deve permitir somente os administradores autorizados
-na porta 443; a autenticação das aplicações permanece. Com vários nomes no
-mesmo IP e porta, grants de rede controlam esse destino compartilhado, não
-distinguem cada hostname HTTPS. Permissões diferentes por aplicação exigiriam
-autorização adicional no proxy ou destinos separados.
-
-O registro de `streaming.greis.dev.br` continua apontando para o IPv4 residencial;
-não criar wildcard ou zona interna que substitua essa resposta. Esse desenho
-dispensa resolvedor adicional e exige Tailscale ativo no cliente, inclusive
-na LAN. Acesso aos mesmos nomes pela LAN sem Tailscale seria uma evolução com
-DNS local e regras próprias, não uma capacidade já implantada.
+A mudança de servidores `a.auto.dns.br`/`b.auto.dns.br` para
+`a.sec.dns.br`/`b.sec.dns.br` ocorreu no fluxo de modo avançado do Registro.br.
+Não houve migração para Cloudflare. Wildcard de certificado não exige wildcard
+DNS; os nove registros permanecem explícitos.
 
 Alguns resolvedores bloqueiam respostas com IP Tailscale por proteção contra
-DNS rebinding. Caso observado nos clientes, conferir uma exceção específica
-para o domínio ou a configuração de DNS confiável na tailnet, sem desativar
-proteções indiscriminadamente. Ver a
+DNS rebinding. Se isso ocorrer, conferir exceção específica para o domínio ou
+DNS confiável na tailnet, sem desabilitar proteções globalmente. Os oito nomes
+anteriores resolveram normalmente no Windows do aceite. Ver a
 [orientação do Tailscale](https://tailscale.com/docs/reference/faq/dns-rebinding).
 
-O HTTPS nativo do Tailscale emite certificados para nomes de dispositivos sob
-o domínio da tailnet em `ts.net`; isso não emite automaticamente certificados
-para `greis.dev.br`. Os nomes solicitados precisam de sua própria emissão e
-renovação. Certificados públicos podem revelar nomes em Certificate Transparency,
-mesmo quando os serviços são privados. Ver
-[certificados HTTPS do Tailscale](https://tailscale.com/docs/how-to/set-up-https-certificates).
+O HTTPS nativo do Tailscale emite nomes sob `ts.net`; ele não emite
+automaticamente certificados para `greis.dev.br`. Aqui o Certbot usou
+[ACME DNS-01](https://letsencrypt.org/docs/challenge-types/#dns-01-challenge),
+provando controle por TXT sem abrir portas à internet. A chave do wildcard
+privado fica no controle. Certificados públicos podem revelar nomes em
+Certificate Transparency mesmo quando o serviço é privado. Ver
+[HTTPS do Tailscale](https://tailscale.com/docs/how-to/set-up-https-certificates).
 
-Para os serviços privados, a proposta é ACME DNS-01: provar controle do domínio
-por TXT em `_acme-challenge`, sem expor portas administrativas à internet. A
-renovação deve usar credenciais limitadas à validação necessária, mantidas fora
-do Git; evitar entregar credencial ampla da zona ao proxy público. A validação
-pode ocorrer separadamente, com entrega controlada dos certificados. Delegação
-por CNAME ou NS permite responder ao desafio em outra zona. Ver
-[desafios do Let's Encrypt](https://letsencrypt.org/docs/challenge-types/#dns-01-challenge).
+A validação TXT foi manual. Instalar Certbot ou configurar um timer de
+renovação não automatiza esse desafio. Ainda é necessário escolher e testar
+uma forma de renovar o certificado privado, entregá-lo ao Nginx e recarregar
+com validação. As opções incluem delegar somente o desafio para zona com API
+ou escolher um provedor DNS com automação. Credenciais devem ficar limitadas
+ao necessário, fora do Git. Cloudflare é opcional para DNS/automação; nenhuma
+delegação ou migração para outro provedor foi aplicada.
 
-A estratégia de automação ainda precisa ser escolhida conforme os recursos
-reais da conta DNS:
+A métrica ativa `private` informa a data de expiração; as regras de aviso e
+crítico foram carregadas saudáveis e inativas. Os alertas não renovam o
+certificado. Como o endereço de entrada é Tailscale, mudança do IPv4 residencial
+não exige atualizar esses registros A nem manter DDNS para publicação WAN.
 
-- Manter o DNS autoritativo atual e delegar os nomes de desafio necessários
-  para uma zona com API adequada, limitando as credenciais à validação.
-- Migrar o DNS autoritativo para um provedor com automação compatível, após
-  inventariar e preservar os registros existentes e definir retorno.
+## Corte e inicialização
 
-Nenhuma dessas alternativas foi escolhida ou aplicada. Cloudflare é uma opção
-de provedor com API, não uma dependência do desenho. Também é possível validar
-inicialmente por TXT manual, mas esse caminho exige nova intervenção em cada
-renovação e não atende sozinho ao objetivo de renovação desassistida. Não se
-pressupõe que a API do Registro.br permita a automação requerida; isso precisa
-ser conferido. DDNS para o registro A público é uma necessidade separada da
-validação DNS-01. Essa escolha não bloqueia o trabalho de mídia e core.
+O [template privado](../../infrastructure/control/private-domains.nginx.conf.template)
+fica ao lado do [site legado 8443](../../infrastructure/control/nginx.conf).
+O renderer exige os IPs privados dos backends, incluindo `PLAYBACK_IP`,
+e recusa campos inválidos; ele não instala nem recarrega serviços.
+Certificados foram conferidos por cadeia, nomes, prazo e correspondência da
+chave antes da implantação inicial.
 
-Caddy já integra o proxy público da edge; emissão/renovação reais ainda aguardam
-aceite. O suporte a DNS-01 depende de configuração e integração compatível com
-o provedor. A delegação do
-desafio também pode ser usada quando o DNS original não oferece integração.
-Isso não determina uma troca do nginx privado existente; a automação DNS-01
-para os nomes privados continua por definir. Ver
-[HTTPS automático do Caddy](https://caddyserver.com/docs/automatic-https#dns-challenge).
+O corte inicial ajustou `PLATFORM_ORIGIN`, `PVE_WEB_URL`, `GRAFANA_URL` e a
+origem da Grafana. Ela usa `/` com
+`HOMELAB_GRAFANA_SERVE_FROM_SUB_PATH=false`. Somente `control` e `grafana`
+foram recriados; os healthchecks passaram. Os Arr mantêm seus prefixos e qBit
+mantém Host, Origin, Referer e cookies pelo proxy administrativo. O novo vhost
+Jellyfin preserva `/jellyfin/`, autenticação, Range e Upgrade.
 
-## Preparação da entrada privada
+O site 8443 foi preservado para retorno operacional. Ele não representa uma
+segunda origem autorizada de login: a API aceita uma única `PLATFORM_ORIGIN`,
+e Grafana tem URL canônica. Filtros carregam antes do Tailscale, e Nginx espera
+o IP antes do teste de configuração ao iniciar. O restart real do Nginx passou
+com essa espera antes de `nginx -t` e HTTP 200 depois. Não houve reboot de VM
+nesta etapa. Retorno operacional não deve reabrir a publicação pública revogada.
 
-O [Nginx atual do controle](../../infrastructure/control/nginx.conf) termina
-TLS na porta 8443 para nomes locais, com acesso pelo host de gestão. API e
-Grafana escutam somente em loopback. A proposta dos domínios exige:
+## Histórico da publicação pública revogada
 
-1. Integrar `homelab-control` e os clientes administrativos à tailnet e aplicar
-   grants para HTTPS privado. Conferir os filtros do convidado e do Proxmox;
-   preservar as negações de edge/playback para a gestão.
-2. Acrescentar os vhosts privados na porta 443, restritos ao IP/interface
-   Tailscale, com certificados DNS-01. Manter a validação da CA no upstream
-   HTTPS do Proxmox e suportar WebSocket para seu console.
-3. Ajustar `PLATFORM_ORIGIN` para `https://homelab.greis.dev.br`, os links
-   `PVE_WEB_URL`/`GRAFANA_URL` e a URL raiz da Grafana. A mudança de `/grafana/`
-   para hostname próprio exige configuração coerente de subpath, cookies,
-   redirects e sessão; não basta adicionar um registro DNS.
-4. Permitir do controle somente os destinos e portas dos backends necessários
-   no core, preservando autenticação e caminhos das aplicações. Administração
-   qBit, se adotada, passa pelo proxy administrativo, nunca pela porta nativa
-   publicada na WAN. Administração Jellyfin continua fora da rota pública.
-5. Validar cada nome, login/logout, CSRF, console Proxmox e permissões em
-   clientes autorizados e não autorizados. Conferir que a ausência de Tailscale
-   impede acesso privado e que a resolução pública de streaming permanece.
+Antes da decisão de usar somente Tailscale, 80/443 externas deram timeout;
+VPS foi recusada e o proprietário chegou a aceitar 10443. Certificado próprio
+foi emitido para streaming e 33 checks do proxy público passaram por TLS/NAT
+loopback. Um teste 4G direto por IP chegou ao aviso de certificado e a captura
+registrou SYN/SYN-ACK externos. A mudança do IPv4 deixou caches com respostas
+antigas. Não houve aceite final de login/reprodução pelo domínio público.
 
-Essa preparação não declara Tailscale, certificados ou novos vhosts implantados.
+Essas evidências explicam o caminho anterior; o proprietário o abandonou.
+Não retomar Cloudflare Tunnel público, VPS, DDNS residencial ou 10443 como
+pendências automáticas. O proxy antigo em TV box Armbian e suas portas altas
+também são históricos. Detalhes ficam no [estado de implementação](../implementation-status.md).
 
-## Evidências pendentes antes de publicar
+## Aceites e pendências atuais
 
-| Área | O que falta comprovar |
+| Área | Pendência |
 |---|---|
-| WAN e provedor de internet | Chegada externa via 10443 comprovada no diagnóstico anterior. Revalidar IP/DNS e o encaminhamento existente na ativação; a liberação de 80/443 deixou de ser condição para esse caminho. |
-| Caminho público | Porta 10443 aceita como endereço final, ainda sem aceite TLS/reprodução. Ajustar redirects e origem externa preservando a porta; testar reprodução, Range e WebSocket. |
-| DNS e TLS | Escolher provedor e método de automação; testar emissão, renovação e entrega dos certificados DNS-01, além do DDNS público, sem expor portas administrativas ou segredos. |
-| Acesso privado | Validar registros para o IP Tailscale do controle, vhosts privados, origens e backends mínimos, grants efetivos e negação a clientes sem permissão. |
-| Isolamento | Nenhuma rota pública aos seis nomes administrativos, aos opcionais privados ou às portas nativas; verificar também IPv6. |
-| Aplicações | Origem, sessões e redirecionamentos corretos; clientes Jellyfin reproduzindo por acesso externo; administração Jellyfin negada pela entrada pública; preservação de NFS RO, lease e contenção de storage. |
+| Jellyfin privado | Aceitar reprodução interativa completa em cliente; TLS, autenticação comum/admin, negação administrativa, catálogo, Range, WebSocket e logout já passaram. |
+| DNS e TLS | Automatizar e testar renovação DNS-01, entrega e recarga do certificado privado; DDNS residencial não é necessário. |
+| Tailscale | Integrar clientes autorizados, revisar grants e testar outro usuário sem permissão e cliente sem Tailscale. |
+| Aplicações privadas | Concluir console WebSocket e upload Proxmox; sete checks autenticados/CSRF qBit já passaram. |
+| Inicialização | Ensaiar retorno após reboot de VM; restart Nginx com espera pelo IP e precheck já passou. |
+| Operação do acervo | Concluir core/consolidação conforme prioridades; novos domínios não provam integridade da mídia nem recuperação USB. |
 
-O [estado de implementação](../implementation-status.md) continua sendo a
-referência para o que foi executado. Este desenho não comprova publicação,
-configuração do Tailscale ou recuperação automática do storage.
+A referência operacional é o [estado de implementação](../implementation-status.md).
+O trabalho preserva a prioridade de
+[concluir o core e consolidar mídia no HD de 18 TB](operational-priorities-2026-11-16.md).

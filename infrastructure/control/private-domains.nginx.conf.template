@@ -1,0 +1,366 @@
+# Include inside Nginx http {} alongside the existing 8443 site.
+# Render offline. The literal Tailscale IP and TLS files must exist before activation.
+# Access/error logs are disabled here: request URLs may carry application credentials.
+map $http_upgrade $homelab_private_connection {
+    default upgrade;
+    '' close;
+}
+
+# Jellyfin 12.2's web bundle still uses api_key on these two routes. Translate
+# only a bounded legacy token when no explicit authentication input is supplied.
+# Native legacy authorization stays disabled; the application validates the token.
+map $uri $homelab_jellyfin_legacy_path {
+    default 0;
+    ~^/jellyfin/socket$ 1;
+    "~^/jellyfin/Items/(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/Download$" 1;
+}
+
+map $args $homelab_jellyfin_canonical_key_present {
+    default 0;
+    "~*(?:^|&)ApiKey(?:=|&|$)" 1;
+}
+
+map "$http_authorization|$http_x_emby_authorization|$http_x_emby_token|$http_x_mediabrowser_token|$homelab_jellyfin_canonical_key_present" $homelab_jellyfin_modern_auth_present {
+    default 1;
+    "||||0" 0;
+}
+
+map $args $homelab_jellyfin_legacy_key_present {
+    default 0;
+    "~*(?:^|&)api_key(?:=|&|$)" 1;
+}
+
+map $args $homelab_jellyfin_legacy_key_duplicate {
+    default 0;
+    "~*(?:^|&)api_key(?:=[^&]*)?(?:&[^&]*)*&api_key(?:=|&|$)" 1;
+}
+
+map $arg_api_key $homelab_jellyfin_legacy_key_valid {
+    default 0;
+    "~^[A-Za-z0-9._~-]{1,4096}$" 1;
+}
+
+# Nginx examines raw query names, while Jellyfin decodes them. Refuse encoded
+# names only when adapting legacy auth, so they cannot disguise a modern key
+# or duplicate token. Encoded values (for example deviceId) remain unchanged.
+map $args $homelab_jellyfin_encoded_query_name {
+    default 0;
+    "~(?:^|&)[^=&]*%[0-9A-Fa-f]{2}[^=&]*(?:=|&|$)" 1;
+}
+
+map "$homelab_jellyfin_legacy_path:$homelab_jellyfin_modern_auth_present:$homelab_jellyfin_legacy_key_present" $homelab_jellyfin_legacy_eligible {
+    default 0;
+    "1:0:1" 1;
+}
+
+map "$homelab_jellyfin_legacy_eligible:$homelab_jellyfin_legacy_key_duplicate:$homelab_jellyfin_legacy_key_valid:$homelab_jellyfin_encoded_query_name" $homelab_jellyfin_authorization {
+    default $http_authorization;
+    "1:0:1:0" 'MediaBrowser Token="$arg_api_key"';
+}
+
+map "$homelab_jellyfin_legacy_eligible:$homelab_jellyfin_legacy_key_duplicate:$homelab_jellyfin_legacy_key_valid:$homelab_jellyfin_encoded_query_name" $homelab_jellyfin_reject_legacy {
+    default 0;
+    "1:0:1:0" 0;
+    ~^1: 1;
+}
+
+server {
+    listen @@TAILSCALE_IP@@:443 ssl default_server;
+    server_name _;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_reject_handshake on;
+    access_log off;
+    error_log /dev/null crit;
+    return 444;
+}
+
+server {
+    listen @@TAILSCALE_IP@@:443 ssl;
+    server_name homelab.greis.dev.br;
+    ssl_certificate @@TLS_CERT_PATH@@;
+    ssl_certificate_key @@TLS_KEY_PATH@@;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:HomelabPrivateTLS:1m;
+    server_tokens off;
+    access_log off;
+    error_log /dev/null crit;
+    if ($ssl_server_name != "homelab.greis.dev.br") { return 421; }
+    client_max_body_size 16k;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy no-referrer always;
+    proxy_http_version 1.1;
+    proxy_set_header Host homelab.greis.dev.br;
+    proxy_set_header X-Forwarded-Host homelab.greis.dev.br;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-Port 443;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header Connection "";
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 35s;
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+    }
+}
+
+server {
+    listen @@TAILSCALE_IP@@:443 ssl;
+    server_name grafana.greis.dev.br;
+    ssl_certificate @@TLS_CERT_PATH@@;
+    ssl_certificate_key @@TLS_KEY_PATH@@;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:HomelabPrivateTLS:1m;
+    server_tokens off;
+    access_log off;
+    error_log /dev/null crit;
+    if ($ssl_server_name != "grafana.greis.dev.br") { return 421; }
+    client_max_body_size 16m;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy no-referrer always;
+    proxy_http_version 1.1;
+    proxy_set_header Host grafana.greis.dev.br;
+    proxy_set_header X-Forwarded-Host grafana.greis.dev.br;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-Port 443;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $homelab_private_connection;
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 3600s;
+    location / {
+        proxy_pass http://127.0.0.1:3080;
+    }
+}
+
+server {
+    listen @@TAILSCALE_IP@@:443 ssl;
+    server_name proxmox.greis.dev.br;
+    ssl_certificate @@TLS_CERT_PATH@@;
+    ssl_certificate_key @@TLS_KEY_PATH@@;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:HomelabPrivateTLS:1m;
+    server_tokens off;
+    access_log off;
+    error_log /dev/null crit;
+    if ($ssl_server_name != "proxmox.greis.dev.br") { return 421; }
+    client_max_body_size 32g;
+    client_body_timeout 300s;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy no-referrer always;
+    proxy_http_version 1.1;
+    proxy_set_header Host proxmox.greis.dev.br;
+    proxy_set_header X-Forwarded-Host proxmox.greis.dev.br;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-Port 443;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $homelab_private_connection;
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_request_buffering off;
+    proxy_buffering off;
+    proxy_ssl_verify on;
+    proxy_ssl_server_name on;
+    proxy_ssl_name @@PVE_TLS_NAME@@;
+    proxy_ssl_trusted_certificate @@PVE_CA_PATH@@;
+    proxy_ssl_verify_depth 2;
+    location / {
+        proxy_pass https://@@PVE_IP@@:8006;
+    }
+}
+
+server {
+    listen @@TAILSCALE_IP@@:443 ssl;
+    server_name radarr.greis.dev.br;
+    ssl_certificate @@TLS_CERT_PATH@@;
+    ssl_certificate_key @@TLS_KEY_PATH@@;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:HomelabPrivateTLS:1m;
+    server_tokens off;
+    access_log off;
+    error_log /dev/null crit;
+    if ($ssl_server_name != "radarr.greis.dev.br") { return 421; }
+    client_max_body_size 64m;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy no-referrer always;
+    proxy_http_version 1.1;
+    proxy_set_header Host radarr.greis.dev.br;
+    proxy_set_header X-Forwarded-Host radarr.greis.dev.br;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-Port 443;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $homelab_private_connection;
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 3600s;
+    location = / { return 302 https://radarr.greis.dev.br/radarr/; }
+    location = /radarr { return 308 https://radarr.greis.dev.br/radarr/; }
+    location /radarr/ {
+        proxy_pass http://@@CORE_IP@@:7878;
+    }
+    location / { return 404; }
+}
+
+server {
+    listen @@TAILSCALE_IP@@:443 ssl;
+    server_name sonarr.greis.dev.br;
+    ssl_certificate @@TLS_CERT_PATH@@;
+    ssl_certificate_key @@TLS_KEY_PATH@@;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:HomelabPrivateTLS:1m;
+    server_tokens off;
+    access_log off;
+    error_log /dev/null crit;
+    if ($ssl_server_name != "sonarr.greis.dev.br") { return 421; }
+    client_max_body_size 64m;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy no-referrer always;
+    proxy_http_version 1.1;
+    proxy_set_header Host sonarr.greis.dev.br;
+    proxy_set_header X-Forwarded-Host sonarr.greis.dev.br;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-Port 443;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $homelab_private_connection;
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 3600s;
+    location = / { return 302 https://sonarr.greis.dev.br/sonarr/; }
+    location = /sonarr { return 308 https://sonarr.greis.dev.br/sonarr/; }
+    location /sonarr/ {
+        proxy_pass http://@@CORE_IP@@:8989;
+    }
+    location / { return 404; }
+}
+
+server {
+    listen @@TAILSCALE_IP@@:443 ssl;
+    server_name bazarr.greis.dev.br;
+    ssl_certificate @@TLS_CERT_PATH@@;
+    ssl_certificate_key @@TLS_KEY_PATH@@;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:HomelabPrivateTLS:1m;
+    server_tokens off;
+    access_log off;
+    error_log /dev/null crit;
+    if ($ssl_server_name != "bazarr.greis.dev.br") { return 421; }
+    client_max_body_size 64m;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy no-referrer always;
+    proxy_http_version 1.1;
+    proxy_set_header Host bazarr.greis.dev.br;
+    proxy_set_header X-Forwarded-Host bazarr.greis.dev.br;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-Port 443;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $homelab_private_connection;
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 3600s;
+    location = / { return 302 https://bazarr.greis.dev.br/bazarr/; }
+    location = /bazarr { return 308 https://bazarr.greis.dev.br/bazarr/; }
+    location /bazarr/ {
+        proxy_pass http://@@CORE_IP@@:6767;
+    }
+    location / { return 404; }
+}
+
+server {
+    listen @@TAILSCALE_IP@@:443 ssl;
+    server_name prowlarr.greis.dev.br;
+    ssl_certificate @@TLS_CERT_PATH@@;
+    ssl_certificate_key @@TLS_KEY_PATH@@;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:HomelabPrivateTLS:1m;
+    server_tokens off;
+    access_log off;
+    error_log /dev/null crit;
+    if ($ssl_server_name != "prowlarr.greis.dev.br") { return 421; }
+    client_max_body_size 64m;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy no-referrer always;
+    proxy_http_version 1.1;
+    proxy_set_header Host prowlarr.greis.dev.br;
+    proxy_set_header X-Forwarded-Host prowlarr.greis.dev.br;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-Port 443;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $homelab_private_connection;
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 3600s;
+    location = / { return 302 https://prowlarr.greis.dev.br/prowlarr/; }
+    location = /prowlarr { return 308 https://prowlarr.greis.dev.br/prowlarr/; }
+    location /prowlarr/ {
+        proxy_pass http://@@CORE_IP@@:9696;
+    }
+    location / { return 404; }
+}
+
+server {
+    listen @@TAILSCALE_IP@@:443 ssl;
+    server_name qbittorrent.greis.dev.br;
+    ssl_certificate @@TLS_CERT_PATH@@;
+    ssl_certificate_key @@TLS_KEY_PATH@@;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:HomelabPrivateTLS:1m;
+    server_tokens off;
+    access_log off;
+    error_log /dev/null crit;
+    if ($ssl_server_name != "qbittorrent.greis.dev.br") { return 421; }
+    client_max_body_size 64m;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy same-origin always;
+    proxy_http_version 1.1;
+    # Preserve native authentication/CSRF inputs and host-only SID cookies.
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-Host $http_host;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-Port 443;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header Connection "";
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 120s;
+    location / {
+        # The private administrative proxy, never the native qBittorrent listener.
+        proxy_pass http://@@CORE_IP@@:18080;
+    }
+}
+
+server {
+    listen @@TAILSCALE_IP@@:443 ssl;
+    server_name jellyfin.greis.dev.br;
+    ssl_certificate @@TLS_CERT_PATH@@;
+    ssl_certificate_key @@TLS_KEY_PATH@@;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:HomelabPrivateTLS:1m;
+    server_tokens off;
+    access_log off;
+    error_log /dev/null crit;
+    if ($ssl_server_name != "jellyfin.greis.dev.br") { return 421; }
+    if ($homelab_jellyfin_reject_legacy) { return 400; }
+    client_max_body_size 64m;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy same-origin always;
+    proxy_http_version 1.1;
+    proxy_set_header Host jellyfin.greis.dev.br;
+    proxy_set_header Authorization $homelab_jellyfin_authorization;
+    proxy_set_header X-Forwarded-Host jellyfin.greis.dev.br;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-Port 443;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $homelab_private_connection;
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_request_buffering off;
+    proxy_buffering off;
+    location = / { return 302 https://jellyfin.greis.dev.br/jellyfin/; }
+    location = /jellyfin { return 308 https://jellyfin.greis.dev.br/jellyfin/; }
+    location /jellyfin/ {
+        # Private application authentication, including native administration.
+        proxy_pass http://@@PLAYBACK_IP@@:8096;
+    }
+    location / { return 404; }
+}
