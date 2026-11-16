@@ -5,10 +5,16 @@
 O proprietário informou que a operadora não libera portas nem IP fixo para
 cliente PF e propôs Tunnel público/Tailscale privado. A análise da política
 oficial descartou recomendar Tunnel público padrão para o vídeo do Jellyfin;
-VPS foi proposta e recusada. Está em discussão HTTPS direto em `:10443`, com
-DNS-01/DDNS, ou Jellyfin também privado; não presumir aceitação de nenhuma das
-duas alternativas. Tailscale permanece proposto para gestão. Nenhum túnel,
-DNS ou firewall foi alterado nesta avaliação. Ver
+VPS foi proposta e recusada. Depois, o proprietário aceitou Jellyfin público em
+`https://streaming.greis.dev.br:10443/jellyfin/`, com DNS-01/DDNS, e serviços
+privados por Tailscale usando `greis.dev.br`. A proposta privada usa registros
+A para o IP Tailscale de `homelab-control` e proxy HTTPS na porta 443, sem
+resolvedor adicional. Certificados próprios, grants, vhosts, origens e regras
+para os backends ainda precisam de implantação e testes. Cloudflare é opcional;
+o domínio ainda não foi adicionado lá, conforme o proprietário. Provedor e
+automação DNS não foram escolhidos, nem houve migração de nameservers. Nenhum
+túnel, DNS ou firewall foi alterado nesta avaliação; a chegada histórica em
+10443 não comprova TLS ou reprodução atuais. Ver
 [domínios e acesso](architecture/access-domains.md).
 
 ## Cliente web Abyss — 16/11/2026
@@ -72,14 +78,17 @@ controles LAN. Isso comprova chegada pela porta alternativa ao mesmo destino
 interno, ainda sem TLS. O diagnóstico das portas externas 80/443 concentra-se
 no caminho anterior à edge, sem distinguir definitivamente roteador de operadora.
 
-O proprietário escolheu **resolver primeiro 80/443 para usar a URL sem porta**.
-10443 continua somente como diagnóstico temporário ativo, sem adoção em produção
-ou preparação de DNS-01. A consulta somente leitura mostrou firewall Off,
+**Decisão histórica, substituída pela aceitação de 10443 acima:** o proprietário
+havia escolhido resolver primeiro 80/443 para usar a URL sem porta. Naquele
+momento, 10443 servia somente ao diagnóstico, sem preparação DNS-01. A consulta
+somente leitura mostrou firewall Off,
 Attack Protection Enable, controle parental desmarcado e tabela de filtros IP
 vazia. O valor Drop Upstream no formulário não é uma regra aplicada; o menu
 Access Control descrito no manual não aparece nessa UI. Nenhuma configuração
-foi alterada. Próximo passo: suporte Brava verificar filtro ou reserva de 80/443
-no equipamento do provedor ou a montante, sem atribuir causa definitiva à operadora.
+foi alterada. O próximo passo então previsto era o suporte Brava verificar
+filtro ou reserva de 80/443 no equipamento do provedor ou a montante, sem
+atribuir causa definitiva à operadora. Essa investigação não condiciona a
+preparação agora aceita de 10443.
 
 A auditoria privada de **15/10/2026**, anterior à migração, já registrava timeout
 externo TCP 80/443 e resposta em 54443. O proxy antigo era uma TV box Armbian

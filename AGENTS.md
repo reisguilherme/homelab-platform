@@ -12,13 +12,16 @@ torrents continuam parados, um em `missingFiles`. Foram publicados 8.209 caminho
 e gatilhos Jellyfin contidos. Backend edge → playback:8096 e isolamento PVE
 foram comprovados; DNAT TCP 80/443 foi aplicado e 33 checks do proxy passaram.
 A publicação está em ativação, sem certificado TLS: 80/443 externas dão timeout;
-10443 temporária chega ao PVE e serve só ao diagnóstico. A operadora recusou
+10443 recebeu conexões externas no diagnóstico, ainda sem HTTPS. A operadora recusou
 liberação das portas/IP fixo para PF, conforme relato posterior do proprietário.
-VPS foi recusada. Avaliar `:10443` com DNS-01/DDNS ou Jellyfin privado, sem
-presumir escolha; gestão continua proposta via Tailscale. Não publicar vídeo
+VPS foi recusada. O proprietário aceitou Jellyfin público em `:10443`, com
+DNS-01/DDNS, e serviços privados por Tailscale usando seus domínios. A proposta
+privada usa registros A para o IP Tailscale do controle e proxy HTTPS na porta 443,
+sem resolvedor adicional. Provedor de DNS e automação ainda não foram escolhidos;
+Cloudflare é opcional e nenhuma migração de nameservers foi aplicada. Não publicar vídeo
 pelo Tunnel público padrão da Cloudflare sem nova decisão informada:
 ver análise em `docs/architecture/access-domains.md`. Nenhuma alternativa foi
-implantada; 10443 continua fora de produção. Consulte o
+implantada; 10443 continua sem aceite TLS/reprodução em produção. Consulte o
 [estado atual](docs/implementation-status.md); os relatos anteriores abaixo são
 históricos e não alteram os limites operacionais.
 

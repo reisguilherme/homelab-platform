@@ -1,11 +1,14 @@
 # Prioridades operacionais em 16/11/2026
 
 **Atualização posterior:** a operadora recusou portas/IP fixo para PF, segundo
-o proprietário. O próximo passo de acesso passa a ser avaliar túnel para
-Jellyfin público e Tailscale privado, conforme [domínios e acesso](access-domains.md).
-VPS foi recusada. `:10443` com DNS-01/DDNS e Jellyfin privado são alternativas
-em discussão; a orientação anterior de aguardar liberação de 80/443 abaixo é
-histórica. Nenhuma alternativa foi implantada.
+o proprietário. VPS foi recusada e depois foi aceito Jellyfin público em
+`:10443` com DNS-01/DDNS e serviços privados por Tailscale usando o domínio,
+conforme [domínios e acesso](access-domains.md). A proposta privada reutiliza
+o controle como proxy HTTPS na porta 443, com registros DNS para seu IP Tailscale, sem
+resolvedor adicional. Cloudflare é opcional; provedor e automação DNS ainda
+não foram escolhidos e não houve migração de nameservers. A orientação
+anterior de aguardar liberação de 80/443 é histórica. TLS público, Tailscale
+e domínios privados ainda não foram implantados e aceitos.
 
 **Avanço no mesmo dia:** 8.209 caminhos/6.023 arquivos únicos (5,449 TB) foram
 publicados no HD de 18 TB; os dois aliases degradados ficam excluídos e as
@@ -15,10 +18,10 @@ permanecem parados, um em `missingFiles`.
 Backend edge, isolamento e 33 checks do proxy foram aceitos. DNAT TCP 80/443
 foi aplicado; a publicação segue em ativação, sem certificado TLS após timeouts
 externos do ACME e do 4G em 80/443. A regra temporária WAN 10443 → LAN 443 está
-ativa e a chegada externa foi capturada, ainda sem TLS. O proprietário escolheu
-resolver primeiro 80/443 para URL sem porta: 10443 é só diagnóstico, sem DNS-01
-ou uso em produção. A causa entre roteador/operadora continua por localizar;
-acesso WAN e filtros IP do roteador serão conferidos somente leitura.
+ativa e a chegada externa foi capturada, ainda sem TLS. Naquele momento, a
+preferência era resolver primeiro 80/443 para URL sem porta; essa decisão foi
+substituída pelo aceite de 10443 acima. A captura não comprova certificado ou
+reprodução externa, que continuam pendentes.
 Os gatilhos Jellyfin seguem contidos. O [estado atual](../implementation-status.md)
 detalha as provas; a sequência abaixo registra a prioridade e o planejamento
 anteriores, não afirma que todas as etapas ainda estejam por começar.
