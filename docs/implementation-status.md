@@ -49,7 +49,7 @@ verificados.** Consulte
 
 O catálogo inicial registra a integração de métricas de mídia como `proposed`;
 o exporter ainda não está ativo. `media-playback` está registrada como `deployed`
-no commit `fc9a560c613431a0d95b4fb4beb5726792b62750`, com contrato e Compose
+no commit `c7d68c002607c13717e56379cb88b71fd0b7abe8`, com contrato e Compose
 próprios no consumidor e aceite privado limitado ao descrito abaixo. O
 contrato do exporter não certifica o restante da stack de mídia, e validar um
 contrato não comprova implantação nem isolamento em runtime.
@@ -105,6 +105,33 @@ pendentes, sem bloquear a recuperação do acervo.
   em `quick_check`; configuração qBit também foi fingerprintada. Nenhum app do
   core foi readmitido. Tarefas nativas continuam exigindo contenção por versão;
   simples restauração e presença de banco não comprovam inicialização segura.
+- **Imagens do core:** arquivo de imagens do checkpoint copiado para o SSD,
+  SHA-256 conferido e carregamento concluído; 49 IDs de imagem locais conferidos
+  incluindo imagens sem tag. Os dez papéis do Compose preparado possuem imagens
+  recuperadas identificadas, incluindo API de controle e proxy qBit. Byparr
+  também foi identificado, mas sua integração e orçamento ainda estão pendentes.
+  Sondas descartáveis sem rede, volumes ou aplicativos nativos conferiram os
+  executáveis disponíveis. Sonarr, Radarr, Prowlarr e Seerr não ofereceram Python
+  nos caminhos auditados; a integração do guard ainda exige empacotamento e
+  ensaio próprios. O SSD do core tinha 110,69 GB livres após essa etapa.
+- **Consolidação:** 6.046 JSONs históricos foram extraídos para um diretório
+  privado novo no SSD, com 33.415.595 bytes e hashes selecionados conferidos.
+  Os 6.029 recibos íntegros descrevem 8.215 caminhos e 5.449.345.903.837 bytes
+  únicos já no staging do HD de 18 TB. Metadados, aliases e quantidade de links
+  coincidiram; o conteúdo atual ainda precisa de leitura e comparação SHA-256.
+  O inventário inicial mais um arquivo posterior autenticado totalizam 8.217
+  caminhos esperados. Faltam os dois aliases de um único arquivo de 4,82 GB,
+  cuja recuperação histórica é explicitamente degradada. Seu candidato foi
+  preservado no estado qBit restaurado no SSD, separado do parcial que permanece
+  no HD; nenhum deles foi publicado como mídia íntegra. A árvore nativa já no
+  HD tem outros 9.709 caminhos e 5.890.064.899.152 bytes únicos, fora dessa etapa
+  de transferência. Nada foi apagado, sobrescrito ou publicado nesta conferência.
+
+A extensão de lease para escritores do core está preparada e revisada, mas
+não implantada. O contrato v2 preserva o consumidor de playback e exige migração
+explícita em HOLD; não altera automaticamente as permissões dos aplicativos.
+O Compose do core continua recusando inicialização. O resumo acima distingue
+restauração, metadados e verificação de conteúdo; não declara o core concluído.
 
 A medição antes da restauração encontrou 5,65 GiB disponíveis e zero swap no
 host, com 11 GiB configurados nas VMs. A [tabela de memória](architecture/operational-priorities-2026-11-16.md)

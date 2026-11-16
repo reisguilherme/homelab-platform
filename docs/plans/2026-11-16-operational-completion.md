@@ -48,12 +48,14 @@ Files: `services/control/audit.py`, `services/control/app.py`, `services/control
 
 - [x] Test shutdown/reboot/start through the private governance API on the empty edge guest with a temporary identity limited to that VM. Prove UPID, state, boot ID, stable SSH identity and restoration. Do not touch core/playback disks or create a guest just for this test.
 - [x] Add storage-admission and Jellyfin availability signals to observability with freshness and failure/resolution tests, using restricted existing channels.
-- [ ] Deploy reviewed changes, check dashboards/alerts and current resource use, publish sanitized evidence and refactor commits.
+- [x] Deploy reviewed maintenance and playback telemetry, check provisioned panels/alerts and current resource use, publish sanitized evidence and refactor commits. Visual review of the three new panels remains separate.
 
 ### Task 4: Continue the media migration
 
 - [x] Prepare core automation as a separate consumer Compose; retain acquisition/import/destructive work disabled until storage and authorization fixtures pass.
-- [ ] Reinventory reconnected source disks, prepare RO source scope and adapt consolidation pins to the new host/guest identities before copying.
+- [x] Reinventory reconnected source disks and inspect under specifically authorized block-RO/ro,noload scope; preserve pending journals without repair.
+- [x] Restore authenticated historical receipts and reconcile current target metadata and coverage, distinguishing healthy copies, missing degraded aliases and preserved partials.
+- [ ] Verify current target content in bounded read-only batches with new host/guest pins before publication; do not reuse historical identities as current authority.
 - [ ] Prepare the physical recovery procedure with exact mount scope and ordinary teardown/revalidation only. Physical power-loss acceptance requires an assisted test; UPS acquisition remains external.
 - [ ] Complete independent work while awaiting disk connection and alert-channel choices. Keep WAN, future HA/K3s and unavailable hardware explicitly pending.
 
@@ -61,8 +63,12 @@ Files: `services/control/audit.py`, `services/control/app.py`, `services/control
 
 Core preparation denies startup; it is not activation. Seven core state trees
 were restored to new private SSD staging (23.566 GB), with pinned manifest,
-selected content hashes/metadata and six SQLite quick checks accepted. Docker
-has no application containers. Source disks are connected and inspected under
+selected content hashes/metadata and six SQLite quick checks accepted. Captured
+images were loaded with their archive hash verified; Docker has no application
+containers. Historical healthy receipts cover 6,029 groups/8,215 paths already
+staged, with current metadata checked but current content hashes still pending.
+Two aliases of one historically degraded file remain absent; preserved repair
+data and the partial are not publication evidence. Source disks are inspected under
 the specific block-RO/ro,noload scope; pending journals and degraded-source
 evidence still require reconciliation before verified consolidation. Alert
 delivery is panel-only by user choice. Domains are documented in
