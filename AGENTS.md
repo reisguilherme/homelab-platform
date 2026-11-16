@@ -57,7 +57,10 @@ históricos e não alteram os limites operacionais.
   identidade e subpasta RW, com marcador RO; mídia continua RO e o container
   mantém 3 GiB de RAM. Encode curto por CPU e 18 logins/logouts após redefinição
   de senha passaram. A relação de credenciais fica somente no Windows privado.
-  Abyss permanece adiado; inspeção da iGPU foi somente leitura, sem passthrough.
+  O adiamento inicial do Abyss foi revogado pelo proprietário em 16/11: o tema
+  web foi integrado ao consumidor e validado em desktop/celular, sem nova VM.
+  Consulte o estado atual e o runbook do mediaserver para revisão e reversão.
+  A inspeção da iGPU foi somente leitura, sem passthrough.
   A lease obrigatória de até 45 segundos está implantada; expiração, HOLD e
   preservação de parada manual foram testados. `resume` exige prova nova;
   readmissão pode permitir restart por `unless-stopped`, preservando parada

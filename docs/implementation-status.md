@@ -1,5 +1,19 @@
 # Estado da implementação
 
+## Cliente web Abyss — 16/11/2026
+
+O proprietário retomou a integração Abyss no Jellyfin da playback. CSS,
+Spotlight e fontes originais locais estão empacotados no repositório
+[mediaserver](https://github.com/reisguilherme/homelab-mediaserver/tree/refactor/deploy/abyss),
+sem serviço ou VM adicional. O aceite privado em desktop e celular com toque
+comprovou login comum, detalhes e reprodução 1080p; a ordem visual das 18 contas
+foi aplicada com cópia privada das preferências anteriores. Treze checks HTTP
+pela rede do Caddy, Nginx e guard comprovaram os assets e a recusa das rotas
+administrativas. Esse aceite não comprova WAN/TLS. Mídia RO, guards, 3 GiB do
+container e manutenção do core permanecem. O procedimento e a revisão vigente
+ficam no [runbook do consumidor](https://github.com/reisguilherme/homelab-mediaserver/blob/refactor/docs/runbooks/abyss.md).
+O adiamento citado nos relatos anteriores abaixo é histórico.
+
 ## Estado atual — 16/11/2026, publicação em ativação
 
 O core mantém **oito processos nativos vivos**: Sonarr, Radarr, Prowlarr,
