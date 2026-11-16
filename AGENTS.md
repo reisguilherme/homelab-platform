@@ -74,6 +74,12 @@ próprios; o catálogo aponta para commits imutáveis e distingue proposta de ex
   inspeção block-RO e ro,noload, sem replay/reparo; preservar esse escopo.
   Docker está instalado no core, mas nenhuma aplicação foi readmitida. Core e
   consolidação são prioridade; domínios greis.dev.br seguem desenho sem deploy.
+  A releitura integral SHA-256 do staging foi interrompida pelo proprietário em
+  16/11; não retomá-la automaticamente. O critério atual é triagem de reprodução,
+  com preservação das origens. Só falha de conteúdo comprovada pode fundamentar
+  a exclusão autorizada da cópia; falha de rede/codec/transcode/autorização ou
+  caminho ainda não publicado não basta. O piloto de três arquivos não excluiu
+  mídia e não comprova a triagem completa.
   Seguir o [runbook de governança](docs/runbooks/platform-governance.md),
   distinguindo credencial de leitura das sessões humanas. Não tratar UI
   sintética, HTTPS ativo ou resposta 202 como operação concluída no Proxmox.

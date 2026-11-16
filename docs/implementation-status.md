@@ -118,11 +118,15 @@ pendentes, sem bloquear a recuperação do acervo.
   privado novo no SSD, com 33.415.595 bytes e hashes selecionados conferidos.
   Os 6.029 recibos íntegros descrevem 8.215 caminhos e 5.449.345.903.837 bytes
   únicos já no staging do HD de 18 TB. Metadados, aliases e quantidade de links
-  coincidiram; a leitura atual com comparação SHA-256 está em andamento, após
-  piloto real de 32 grupos/2.078 bytes. O executor transitório no guest tem
-  limite de 64 MiB/s, 384 MiB de RAM, 75% de um núcleo e I/O ocioso, sem restart;
-  progresso fica no SSD e divergências interrompem a execução. O tempo mínimo
-  de leitura nesse teto é cerca de 23 horas, além das verificações e pausas.
+  coincidiram. A releitura integral SHA-256 foi parada a pedido do proprietário
+  em 16/11, com unit inativa, PID zero e nenhum verificador restante. O último
+  progresso registrava 3.824 grupos/84.489.546.300 bytes; recibos parciais foram
+  preservados. Não retomar a varredura automaticamente. O critério escolhido
+  passou a ser reprodução: três arquivos já presentes passaram no piloto HTTP
+  do Jellyfin e em nove trechos de decodificação no servidor, sem alterar o
+  histórico. Um item ainda ausente do caminho da biblioteca foi separado como
+  pendência da migração, não corrupção. Nenhuma mídia foi excluída. Esse piloto
+  não cobre todo o acervo nem prova reprodução em cliente ou arquivo inteiro.
   O inventário inicial mais um arquivo posterior autenticado totalizam 8.217
   caminhos esperados. Faltam os dois aliases de um único arquivo de 4,82 GB,
   cuja recuperação histórica é explicitamente degradada. Seu candidato foi
