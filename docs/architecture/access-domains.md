@@ -11,7 +11,13 @@ distintos chegando a PVE:443. A porta alternativa chega ao mesmo destino interno
 isso ainda não distingue roteador de operadora na falha de 80/443.
 O proprietário escolheu resolver **80/443 e a URL sem porta** primeiro. 10443
 é somente diagnóstico temporário ativo; não preparar DNS-01 ou 10443 em produção.
-A conferência somente leitura de acesso WAN e filtros IP do roteador continua pendente.
+Consulta RO: firewall Off, proteção contra ataques Enable, controle parental
+desmarcado e tabela IP Filter vazia; Access Control não aparece na UI. O próximo
+passo é suporte Brava conferir filtro/reserva de 80/443 no equipamento ou a montante.
+Auditoria de 15/10 já registrava timeout externo 80/443 e resposta em 54443.
+O proxy antigo era TV box Armbian na mesma LAN, com WAN 54443 → LAN 443 e DNS-01;
+em 18/10 houve HTTP 200 externo/TLS válido nessa porta alta. A falha padrão
+precede a migração, mas ainda não comprova responsabilidade da operadora.
 `streaming.greis.dev.br` permanece em ativação, sem anúncio de disponibilidade.
 Não se declara implantação dos nomes administrativos privados.
 

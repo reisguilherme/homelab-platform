@@ -49,10 +49,20 @@ no caminho anterior à edge, sem distinguir definitivamente roteador de operador
 
 O proprietário escolheu **resolver primeiro 80/443 para usar a URL sem porta**.
 10443 continua somente como diagnóstico temporário ativo, sem adoção em produção
-ou preparação de DNS-01. A consulta somente leitura do roteador mostrou nível
-geral de firewall Off e proteção contra ataques Enable, sem alterações. Isso
-afasta o nível geral como explicação; ainda faltam Access Control WAN HTTP/HTTPS
-e filtros IP downstream. Não atribuir política de bloqueio à operadora.
+ou preparação de DNS-01. A consulta somente leitura mostrou firewall Off,
+Attack Protection Enable, controle parental desmarcado e tabela de filtros IP
+vazia. O valor Drop Upstream no formulário não é uma regra aplicada; o menu
+Access Control descrito no manual não aparece nessa UI. Nenhuma configuração
+foi alterada. Próximo passo: suporte Brava verificar filtro ou reserva de 80/443
+no equipamento do provedor ou a montante, sem atribuir causa definitiva à operadora.
+
+A auditoria privada de **15/10/2026**, anterior à migração, já registrava timeout
+externo TCP 80/443 e resposta em 54443. O proxy antigo era uma TV box Armbian
+na mesma LAN, não um servidor na nuvem: o plano de 15/10 usava WAN 54443 → TV box
+443 com DNS-01, confirmado na configuração histórica. A execução de 18/10
+documentou HTTP 200 externo com TLS válido por esse caminho. O acesso antigo
+funcionava pela porta externa alta; não comprova que WAN 443 funcionasse.
+Os timeouts padrão antecedem a migração, sem identificar por si só sua causa.
 
 A limpeza das rodadas v2/v3 de dispositivos de teste Jellyfin conferiu seis
 registros: quatro já ausentes e dois removidos por IDs de recibos, metadados e
