@@ -190,6 +190,83 @@ def open_trusted_readonly(path, *, private=False):
     return descriptor
 
 
+def publish_core_writer_lease(
+    directory,
+    journal,
+    profile,
+    state,
+    generation,
+    sequence,
+    not_after,
+    boot_id,
+    wall_time,
+    uptime,
+    expected_boot=None,
+    filesystem_uuid=None,
+    physical_generation=None,
+    observed_uptime=None,
+):
+    if (
+        profile.get("role") != "core"
+        or not re.fullmatch(UUID, profile.get("filesystem_uuid", ""))
+        or type(sequence) is not int
+        or not 1 <= sequence <= 2**63 - 1
+        or not re.fullmatch(UUID, boot_id)
+        or not re.fullmatch(GENERATION, generation)
+        or state not in {"ready", "hold"}
+    ):
+        raise ValueError("writer-arguments")
+    expiry = lease_expiry(state, not_after, wall_time, uptime)
+    if state == "ready":
+        if (
+            expected_boot != boot_id
+            or filesystem_uuid != profile["filesystem_uuid"]
+            or type(observed_uptime) is not int
+            or not 0 <= observed_uptime <= uptime
+            or not isinstance(physical_generation, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", physical_generation)
+        ):
+            raise ValueError("writer-proof")
+        expiry = min(expiry, observed_uptime + 45)
+        if expiry <= uptime:
+            raise ValueError("writer-proof-expired")
+    else:
+        physical_generation = "none"
+    value = (
+        f"version=2\nrole=core-writer\nstate={state}\nboot_id={boot_id}\n"
+        f"filesystem_uuid={profile['filesystem_uuid']}\ngeneration={generation}\n"
+        f"physical_generation={physical_generation}\nsequence={sequence}\n"
+        f"expires_uptime_seconds={expiry}\n"
+    )
+    trusted(directory, directory=True)
+    if journal.exists():
+        prior = strict_json(read_bounded(journal, private=True))
+        if (
+            not isinstance(prior, dict)
+            or set(prior) != {"version", "role", "sequence"}
+            or type(prior["version"]) is not int
+            or prior["version"] != 2
+            or prior["role"] != "core-writer"
+            or type(prior["sequence"]) is not int
+            or not 1 <= prior["sequence"] < sequence
+        ):
+            raise ValueError("writer-sequence")
+    atomic(
+        journal, json.dumps(dict(version=2, role="core-writer", sequence=sequence)).encode(), 0o600
+    )
+    atomic(directory / "lease", value.encode("ascii"), 0o644)
+    return dict(
+        version=2,
+        role="core-writer",
+        written=True,
+        sequence=sequence,
+        generation=generation,
+        state=state,
+        boot_id=boot_id,
+        filesystem_uuid=profile["filesystem_uuid"],
+    )
+
+
 def read_bounded(path, *, private=False):
     with os.fdopen(open_trusted_readonly(path, private=private), "rb") as stream:
         if os.fstat(stream.fileno()).st_size > 4096:
@@ -200,10 +277,21 @@ def read_bounded(path, *, private=False):
     return value
 
 
-def reconcile_lease(profile, pid, sequence, generation, state):
+def reconcile_lease(
+    profile,
+    pid,
+    sequence,
+    generation,
+    state,
+    *,
+    writer=False,
+    expected_boot=None,
+    filesystem_uuid=None,
+    physical_generation=None,
+):
     """Observe only SSD/proc state under the existing publication lock; never publish."""
     if (
-        profile != {"version": 1, "role": "playback"}
+        (profile.get("role") != "core" if writer else profile != {"version": 1, "role": "playback"})
         or type(pid) is not int
         or not 1 <= pid <= 2**31 - 1
         or type(sequence) is not int
@@ -213,9 +301,18 @@ def reconcile_lease(profile, pid, sequence, generation, state):
         or state not in {"ready", "hold"}
     ):
         raise ValueError("reconciliation-arguments")
+    if writer and (
+        not isinstance(profile.get("filesystem_uuid"), str)
+        or not re.fullmatch(UUID, profile["filesystem_uuid"])
+    ):
+        raise ValueError("reconciliation-uuid")
+    prefix = "core-writer-" if writer else ""
+    admission = STATE / f"{prefix}admission"
     trusted(STATE, directory=True)
-    trusted(STATE / "admission", directory=True)
-    with os.fdopen(open_trusted_readonly(STATE / "lease.lock", private=True), "rb") as lock:
+    trusted(admission, directory=True)
+    with os.fdopen(
+        open_trusted_readonly(STATE / f"{prefix}lease.lock", private=True), "rb"
+    ) as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         try:
             (PROC / str(pid)).lstat()
@@ -233,33 +330,60 @@ def reconcile_lease(profile, pid, sequence, generation, state):
         ):
             raise ValueError("reconciliation-boot-time")
         uptime = int(float(uptime_text.split()[0]))
-        journal_bytes = read_bounded(STATE / "lease-state.json", private=True)
+        journal_bytes = read_bounded(STATE / f"{prefix}lease-state.json", private=True)
         journal = strict_json(journal_bytes)
+        expected_journal = (
+            dict(version=2, role="core-writer", sequence=sequence)
+            if writer
+            else dict(version=1, sequence=sequence)
+        )
         if (
             not isinstance(journal, dict)
-            or set(journal) != {"version", "sequence"}
+            or journal != expected_journal
             or type(journal["version"]) is not int
-            or journal["version"] != 1
             or type(journal["sequence"]) is not int
-            or journal["sequence"] != sequence
         ):
             raise ValueError("reconciliation-journal")
-        lease_bytes = read_bounded(STATE / "admission/lease")
-        match = re.fullmatch(
-            rf"version=1\nstate=(ready|hold)\nboot_id=({UUID})\ngeneration=({GENERATION})\n"
-            r"expires_uptime_seconds=(0|[1-9][0-9]{0,15})\n",
-            lease_bytes.decode("ascii"),
-        )
-        if match is None or match.group(1, 2, 3) != (state, boot, generation):
-            raise ValueError("reconciliation-lease")
-        expiry = int(match.group(4))
+        lease_bytes = read_bounded(admission / "lease")
+        if writer:
+            match = re.fullmatch(
+                rf"version=2\nrole=core-writer\nstate=(ready|hold)\nboot_id=({UUID})\n"
+                rf"filesystem_uuid=({UUID})\ngeneration=({GENERATION})\n"
+                r"physical_generation=(none|[0-9a-f]{64})\nsequence=([1-9][0-9]{0,18})\n"
+                r"expires_uptime_seconds=(0|[1-9][0-9]{0,15})\n",
+                lease_bytes.decode("ascii"),
+            )
+            if (
+                match is None
+                or match.group(1, 2, 3, 4) != (state, boot, profile["filesystem_uuid"], generation)
+                or int(match.group(6)) != sequence
+                or state == "hold"
+                and match.group(5) != "none"
+                or state == "ready"
+                and (
+                    boot != expected_boot
+                    or match.group(3) != filesystem_uuid
+                    or match.group(5) != physical_generation
+                )
+            ):
+                raise ValueError("reconciliation-lease")
+            expiry = int(match.group(7))
+        else:
+            match = re.fullmatch(
+                rf"version=1\nstate=(ready|hold)\nboot_id=({UUID})\ngeneration=({GENERATION})\n"
+                r"expires_uptime_seconds=(0|[1-9][0-9]{0,15})\n",
+                lease_bytes.decode("ascii"),
+            )
+            if match is None or match.group(1, 2, 3) != (state, boot, generation):
+                raise ValueError("reconciliation-lease")
+            expiry = int(match.group(4))
         if (
             expiry > uptime
             or (state == "hold" and expiry != 0)
             or (state == "ready" and expiry == 0)
         ):
             raise ValueError("reconciliation-expiry")
-        return {
+        result = {
             "version": 1,
             "reconciled": True,
             "pid": pid,
@@ -272,6 +396,37 @@ def reconcile_lease(profile, pid, sequence, generation, state):
             "lease_sha256": hashlib.sha256(lease_bytes).hexdigest(),
             "journal_sha256": hashlib.sha256(journal_bytes).hexdigest(),
         }
+        if writer:
+            result.update(
+                version=2,
+                role="core-writer",
+                filesystem_uuid=profile["filesystem_uuid"],
+                physical_generation=match.group(5),
+            )
+        return result
+
+
+def reconcile_core_writer_lease(
+    profile,
+    pid,
+    sequence,
+    generation,
+    state,
+    expected_boot=None,
+    filesystem_uuid=None,
+    physical_generation=None,
+):
+    return reconcile_lease(
+        profile,
+        pid,
+        sequence,
+        generation,
+        state,
+        writer=True,
+        expected_boot=expected_boot,
+        filesystem_uuid=filesystem_uuid,
+        physical_generation=physical_generation,
+    )
 
 
 def mount_identity(text, device):
@@ -449,35 +604,98 @@ def core_probe(profile, nonce):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["probe", "lease-ready", "lease-hold", "reconcile-lease"])
+    parser.add_argument(
+        "action",
+        choices=[
+            "probe",
+            "lease-ready",
+            "lease-hold",
+            "reconcile-lease",
+            "probe-core-writer",
+            "core-writer-lease-ready",
+            "core-writer-lease-hold",
+            "reconcile-core-writer-lease",
+        ],
+    )
     parser.add_argument("--nonce")
     parser.add_argument("--generation")
     parser.add_argument("--sequence", type=int)
     parser.add_argument("--not-after", type=int, default=0)
     parser.add_argument("--pid", type=int)
     parser.add_argument("--state", choices=["ready", "hold"])
+    parser.add_argument("--expected-boot")
+    parser.add_argument("--filesystem-uuid")
+    parser.add_argument("--physical-generation")
+    parser.add_argument("--observed-uptime", type=int)
     args = parser.parse_args()
     result = {"version": 1, "healthy": False, "reason": "probe-refused"}
     try:
         if os.geteuid() != 0:
             raise ValueError("root-required")
-        if args.action == "reconcile-lease":
+        if args.action.startswith("reconcile-"):
             # A lost QGA reply must not leave an unbounded reconciliation helper.
             signal.alarm(5)
         profile = read_profile()
+        if args.action == "reconcile-core-writer-lease":
+            result = reconcile_core_writer_lease(
+                profile,
+                args.pid,
+                args.sequence,
+                args.generation,
+                args.state,
+                args.expected_boot,
+                args.filesystem_uuid,
+                args.physical_generation,
+            )
+            print(json.dumps(result))
+            return 0
         if args.action == "reconcile-lease":
             result = reconcile_lease(profile, args.pid, args.sequence, args.generation, args.state)
             print(json.dumps(result))
             return 0
         trusted(STATE, directory=True)
-        lock_path = STATE / ("probe.lock" if args.action == "probe" else "lease.lock")
+        is_probe = args.action in {"probe", "probe-core-writer"}
+        writer = args.action.startswith("core-writer-")
+        lock_path = STATE / (
+            "probe.lock" if is_probe else "core-writer-lease.lock" if writer else "lease.lock"
+        )
         fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
         with os.fdopen(fd, "w") as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            if args.action == "probe":
+            if is_probe:
                 if profile["role"] != "core" or not re.fullmatch(GENERATION, args.nonce or ""):
                     raise ValueError("probe-arguments")
+                observed = (
+                    int(float((PROC / "uptime").read_text().split()[0]))
+                    if args.action == "probe-core-writer"
+                    else None
+                )
                 result = core_probe(profile, args.nonce)
+                if args.action == "probe-core-writer":
+                    result.update(
+                        version=2,
+                        filesystem_uuid=profile["filesystem_uuid"],
+                        observed_uptime_seconds=observed,
+                    )
+            elif writer:
+                boot = (PROC / "sys/kernel/random/boot_id").read_text().strip()
+                uptime = float((PROC / "uptime").read_text().split()[0])
+                result = publish_core_writer_lease(
+                    STATE / "core-writer-admission",
+                    STATE / "core-writer-lease-state.json",
+                    profile,
+                    args.action.removeprefix("core-writer-lease-"),
+                    args.generation or "",
+                    args.sequence,
+                    args.not_after,
+                    boot,
+                    time.time(),
+                    uptime,
+                    args.expected_boot,
+                    args.filesystem_uuid,
+                    args.physical_generation,
+                    args.observed_uptime,
+                )
             else:
                 if profile["role"] != "playback":
                     raise ValueError("lease-role")
@@ -500,7 +718,7 @@ def main():
         print(json.dumps(result))
         return 1
     finally:
-        if args.action == "reconcile-lease":
+        if args.action.startswith("reconcile-"):
             signal.alarm(0)
     print(json.dumps(result))
     return 0

@@ -1,5 +1,53 @@
 # Hub de arquivos inicial
 
+## Admissão opt-in de escritores no core
+
+O supervisor pode atender o core e a playback pela mesma autoridade, mediante
+migração explícita descrita no [runbook](../../docs/runbooks/storage-core-handoff.md#lease-de-escrita-do-core-opt-in).
+Código instalado com perfil v1 continua somente playback. O perfil v2 acrescenta
+`core_writer_enabled: true` às identidades existentes; editar apenas o perfil
+não migra o estado. Não instalar outra autoridade, daemon ou unit de host.
+
+O helper usa o perfil `role=core` já existente. Root prepara explicitamente no
+SSD do core `/var/lib/homelab-storage/core-writer-admission` (root 0755); o
+consumidor monta esse diretório RO. A lease é root 0644, substituída atomicamente;
+o journal `core-writer-lease-state.json` e o lock `core-writer-lease.lock` ficam
+no diretório privado de estado, root 0600. O helper não cria o diretório de
+admissão nem escreve no volume de mídia para publicar autorização.
+
+O protocolo de escrita tem exatamente nove linhas ASCII ordenadas e únicas:
+
+```text
+version=2
+role=core-writer
+state=ready
+boot_id=<UUID do boot atual do core>
+filesystem_uuid=<UUID fixado no perfil do core>
+generation=<32 hex minúsculos da autoridade>
+physical_generation=<64 hex minúsculos da prova física>
+sequence=<inteiro positivo global>
+expires_uptime_seconds=<inteiro de uptime do core>
+```
+
+HOLD usa `state=hold`, `physical_generation=none` e expiry 0. O consumidor
+recusa qualquer HOLD, lease ausente, inválida, vencida, com boot/UUID diferente
+ou prazo maior que 45 segundos. Também verifica o bind ext4 local e a identidade
+esperada; mount presente não substitui a prova física autorizada pela plataforma.
+O caminho/protocolo de playback v1 permanece igual e não autoriza escrita.
+
+`probe-core-writer` executa uma única prova física, com uptime capturado antes
+do I/O. READY vai primeiro à playback, depois ao core; ambos usam a mesma prova
+e prazo original. O core ainda limita expiry ao uptime da prova +45 e exige
+o mesmo boot observado. HOLD prioriza core, depois playback. Há no máximo uma
+publicação pendente global e uma prova pendente; ambiguidade preserva o registro
+e exige contenção por expiry. Entrega entre VMs não é atômica. A playback mantém
+sua premissa atual de relógios sincronizados.
+
+Esta lease não inicia aplicações, remove pausas manuais, restaura dados ou
+readmite scans. A contenção periódica de todos os escritores e o recibo de
+restauração/ativação pertencem ao consumidor e exigem aceite separado. Testes
+com fixtures não comprovam comportamento físico ou implantação do core.
+
 O [runbook](../../docs/runbooks/storage-core-handoff.md) registra a passagem do
 HD ao core e os testes reais. Estes arquivos são referências para revisão;
 não são um instalador nem devem sobrescrever arquivos do sistema.

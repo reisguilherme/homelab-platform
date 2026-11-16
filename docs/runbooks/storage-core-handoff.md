@@ -249,6 +249,80 @@ O comando não resolve probe do core preso, PID desconhecido, falha física de
 USB ou revisão após reboot. As fixtures Linux que cobrem essas recusas não
 comprovam recuperação física, funcionamento contínuo nem testes de hardware.
 
+## Lease de escrita do core opt-in
+
+Esta extensão tem aceite de código separado da ativação operacional. A
+[referência do protocolo](../../infrastructure/storage/README.md#admissão-opt-in-de-escritores-no-core)
+define o diretório distinto `core-writer-admission`, nove campos v2 e guard
+obrigatório do consumidor. O perfil v1 mantém o comportamento somente playback;
+instalar os novos scripts não habilita publicação ao core. Não usar a lease
+de playback para autorizar escritores locais.
+
+Root revisa o consumidor, a contenção de todos os escritores, preservação de
+pausas manuais e recibos de restauração/ativação antes de aplicar a migração.
+Preparar explicitamente o diretório de admissão no SSD do core; o helper
+exige sua existência. Instalar os binários compatíveis sem alterar perfis,
+journals ou estado de autoridade em execução. Não reinicializar arquivos para
+contornar falhas de validação.
+
+No PVE, pedir HOLD normalmente e aguardar conclusão definitiva das operações
+pendentes. Probe preso ou PID de lançamento desconhecido continua impedindo
+migração. Reconciliar uma publicação perdida somente pelo procedimento próprio
+quando todos os requisitos puderem ser provados. A migração exige HOLD, nenhum
+probe/publicação pendente e perfil/estado/boot atuais validados:
+
+```sh
+python3 -B /usr/local/lib/homelab-storage/storage_supervisor.py enable-core-writer
+```
+
+Sob o mesmo flock do supervisor, esse comando gera perfil v2 opt-in e estado
+v2, preservando sequência global, generation, histórico de arm, boot e
+identidade física registrada. Reinicia apenas a lista de destinatários HOLD
+confirmados, porque o core precisa receber a nova negação. Não chama tick,
+probe, READY, resume ou aplicação. Antes de substituir os dois arquivos,
+grava/fsync um recibo privado root 0600 em
+`/var/lib/homelab-storage-supervisor/core-writer-migration.json`, com snapshots
+e hashes antigos/novos e fase `prepared`; após validar o par final, registra
+`committed`. O recibo permanece fora do Git e é necessário para o modo v2.
+
+Se houver interrupção entre as gravações, os ticks recusam mutação e status
+informa migração pendente. A conclusão é explícita:
+
+```sh
+python3 -B /usr/local/lib/homelab-storage/storage_supervisor.py complete-core-writer-migration
+```
+
+Ela aceita somente o mesmo boot e as combinações exatas dos arquivos descritos
+no recibo, permanece HOLD e preserva a sequência. Qualquer arquivo divergente,
+recibo ausente/inválido ou mudança de boot exige revisão; não reconstruir estado
+a partir do perfil, apagar recibos nem restaurar o snapshot antigo. Depois de
+avançar a sequência, reaplicar um recibo antigo é recusado. Não há downgrade
+automático; voltar ao binário/perfil v1 é outra operação revisada em HOLD.
+
+Depois da migração, os ticks publicam HOLD primeiro ao core, depois à playback.
+Conferir ambas as negações antes do `resume` explícito. Cada novo ciclo usa uma
+prova física do core, seguida de READY playback e READY core em série, com
+prazo comum limitado desde o início da prova. O core verifica o boot da prova
+e limita validade ao uptime observado +45 segundos. A segunda publicação
+não estende o prazo. Falha entre destinatários pode deixar o primeiro READY
+até receber HOLD ou expirar; não há atomicidade entre as VMs.
+
+O estado v2 identifica o destinatário de cada publicação pendente. O mesmo
+`reconcile-lease` roteia a reconciliação ao helper fixo desse destinatário:
+no core, exige lock/journal/lease distintos, papel correto, mesma sequência,
+generation, UUID, boot e prova física esperada, PID ausente e lease vencida.
+HOLD usa prova física `none` e expiry 0. O recibo durável precede a limpeza,
+que conserva HOLD e força nova publicação das negações. Nenhuma evidência
+incompleta ou mudança de boot é reconciliada automaticamente.
+
+O limite de uma prova pendente e uma publicação pendente global continua.
+Não há novo daemon, unit de host, worker paralelo, fsck, remount, restart de VM
+ou start de aplicações. O teste sintético de cadência inclui custo dos dois
+`qm config` por tick, lançamentos/status e passagens de minuto; isso não prova
+latência física, RAM disponível ou comportamento de I/O preso. Validar esses
+aspectos no deploy autorizado antes de readmitir escritores. A lease não
+substitui o aceite separado de contenção/ativação do consumidor.
+
 ## Limites e próxima etapa
 
 Essa entrega estabelece a leitura remota de mídia por um consumidor e
