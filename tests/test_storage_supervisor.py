@@ -712,3 +712,521 @@ def test_status_busy_remains_normal_observation(supervisor, monkeypatch, capsys)
     monkeypatch.setattr(supervisor, "one", lambda _: {"mode": "busy"})
     assert supervisor.main() == 0
     assert json.loads(capsys.readouterr().out) == {"mode": "busy"}
+
+
+@pytest.mark.parametrize("payload", ["", "{", "null", "[]", "1", None, 7, "x" * 16385])
+def test_exited_malformed_output_is_terminal_failure(supervisor, pve_profile, payload):
+    backend = supervisor.QgaBackend(pve_profile)
+    backend.run = lambda _: json.dumps({"exited": 1, "exitcode": 0, "out-data": payload})
+    assert backend.poll("playback", 123) == {"failed": True}
+
+
+def test_stale_lease_ack_clears_and_persists_completion_before_next_tick(setup):
+    controller, backend, _, saved = setup
+    controller.request("arm")
+    controller.tick()
+    complete_probe(controller, backend)
+    controller.tick()
+    pending = dict(controller.state["lease"])
+    complete_lease(controller, backend)
+    controller.request("hold")
+    saved.clear()
+    controller.poll_lease()
+    assert controller.state["lease"] is None
+    assert len(saved) == 1
+    assert saved[0]["lease"] is None and saved[0]["mode"] == "hold"
+    assert saved[0]["reason"] == "lease-completed-stale"
+    assert saved[0]["generation"] != pending["generation"]
+
+
+def test_invalid_terminal_lease_never_persists_cleared_lease_while_armed(setup):
+    controller, backend, _, saved = setup
+    controller.request("arm")
+    controller.tick()
+    complete_probe(controller, backend)
+    controller.tick()
+    backend.pending[controller.state["lease"]["pid"]] = {"failed": True}
+    saved.clear()
+    controller.poll_lease()
+    assert len(saved) == 1
+    assert saved[0]["lease"] is None
+    assert saved[0]["mode"] == "hold" and saved[0]["reason"] == "lease-rejected"
+
+
+@pytest.fixture
+def reconciliation_files(guest, tmp_path, monkeypatch):
+    storage = tmp_path / "storage"
+    storage.mkdir()
+    admission = storage / "admission"
+    admission.mkdir()
+    (storage / "lease.lock").touch(mode=0o600)
+    (storage / "lease-state.json").write_text('{"version":1,"sequence":7}')
+    (admission / "lease").write_text(
+        "version=1\nstate=ready\nboot_id=12345678-1234-1234-1234-123456789abc\n"
+        f"generation={'a' * 32}\nexpires_uptime_seconds=120\n"
+    )
+    proc = tmp_path / "proc"
+    (proc / "sys/kernel/random").mkdir(parents=True)
+    (proc / "sys/kernel/random/boot_id").write_text("12345678-1234-1234-1234-123456789abc\n")
+    (proc / "uptime").write_text("121.25 1000.0\n")
+    monkeypatch.setattr(guest, "STATE", storage)
+    monkeypatch.setattr(guest, "PROC", proc, raising=False)
+    # Temporary ancestry cannot pass root-only trust; no-follow opens and bounds remain real.
+    monkeypatch.setattr(guest, "trusted", lambda path, **_: path.lstat())
+    return storage, proc
+
+
+def test_guest_reconciliation_proves_expired_publication_without_writes(
+    guest, reconciliation_files
+):
+    import hashlib
+
+    storage, _ = reconciliation_files
+    files = [storage / "lease-state.json", storage / "admission/lease", storage / "lease.lock"]
+    before = {path: path.read_bytes() for path in files}
+    proof = guest.reconcile_lease({"version": 1, "role": "playback"}, 123, 7, "a" * 32, "ready")
+    assert proof == {
+        "version": 1,
+        "reconciled": True,
+        "pid": 123,
+        "sequence": 7,
+        "generation": "a" * 32,
+        "state": "ready",
+        "boot_id": "12345678-1234-1234-1234-123456789abc",
+        "expires_uptime_seconds": 120,
+        "observed_uptime_seconds": 121,
+        "lease_sha256": hashlib.sha256(before[storage / "admission/lease"]).hexdigest(),
+        "journal_sha256": hashlib.sha256(before[storage / "lease-state.json"]).hexdigest(),
+    }
+    assert {path: path.read_bytes() for path in files} == before
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "live-pid",
+        "journal-sequence",
+        "journal-duplicate",
+        "journal-scalar",
+        "lease-active",
+        "wrong-boot",
+        "wrong-generation",
+        "wrong-state",
+        "lease-duplicate",
+        "lease-malformed",
+        "lease-oversize",
+        "journal-oversize",
+        "lease-symlink",
+        "journal-symlink",
+        "lock-symlink",
+        "boot-malformed",
+        "uptime-malformed",
+        "missing-lease",
+        "missing-journal",
+        "missing-lock",
+    ],
+)
+def test_guest_reconciliation_refuses_incomplete_or_foreign_proof(
+    guest, reconciliation_files, mutation
+):
+    storage, proc = reconciliation_files
+    lease = storage / "admission/lease"
+    journal = storage / "lease-state.json"
+    if mutation == "live-pid":
+        (proc / "123").mkdir()
+    elif mutation == "journal-sequence":
+        journal.write_text('{"version":1,"sequence":8}')
+    elif mutation == "journal-duplicate":
+        journal.write_text('{"version":1,"sequence":7,"sequence":7}')
+    elif mutation == "journal-scalar":
+        journal.write_text("null")
+    elif mutation == "lease-active":
+        lease.write_text(lease.read_text().replace("=120", "=122"))
+    elif mutation == "wrong-boot":
+        lease.write_text(lease.read_text().replace("12345678-", "87654321-"))
+    elif mutation == "wrong-generation":
+        lease.write_text(lease.read_text().replace("a" * 32, "b" * 32))
+    elif mutation == "wrong-state":
+        lease.write_text(lease.read_text().replace("state=ready", "state=hold"))
+    elif mutation == "lease-duplicate":
+        lease.write_text(lease.read_text() + "state=ready\n")
+    elif mutation == "lease-malformed":
+        lease.write_text(lease.read_text().replace("=120", "=nan"))
+    elif mutation.endswith("oversize"):
+        (lease if mutation.startswith("lease") else journal).write_text("x" * 4097)
+    elif mutation.endswith("symlink"):
+        target = {
+            "lease-symlink": lease,
+            "journal-symlink": journal,
+            "lock-symlink": storage / "lease.lock",
+        }[mutation]
+        other = target.with_name(target.name + ".other")
+        target.rename(other)
+        target.symlink_to(other)
+    elif mutation == "boot-malformed":
+        (proc / "sys/kernel/random/boot_id").write_text("unknown")
+    elif mutation == "uptime-malformed":
+        (proc / "uptime").write_text("nan 0")
+    else:
+        {
+            "missing-lease": lease,
+            "missing-journal": journal,
+            "missing-lock": storage / "lease.lock",
+        }[mutation].unlink()
+    with pytest.raises((OSError, ValueError)):
+        guest.reconcile_lease({"version": 1, "role": "playback"}, 123, 7, "a" * 32, "ready")
+
+
+def test_guest_reconciliation_refuses_busy_lease_lock(guest, reconciliation_files):
+    storage, _ = reconciliation_files
+    with (storage / "lease.lock").open() as lock:
+        guest.fcntl.flock(lock, guest.fcntl.LOCK_EX | guest.fcntl.LOCK_NB)
+        with pytest.raises(BlockingIOError):
+            guest.reconcile_lease({"version": 1, "role": "playback"}, 123, 7, "a" * 32, "ready")
+
+
+def test_guest_reconciliation_accepts_hold_zero_expiry(guest, reconciliation_files):
+    storage, _ = reconciliation_files
+    lease = storage / "admission/lease"
+    lease.write_text(lease.read_text().replace("state=ready", "state=hold").replace("=120", "=0"))
+    assert (
+        guest.reconcile_lease({"version": 1, "role": "playback"}, 123, 7, "a" * 32, "hold")[
+            "expires_uptime_seconds"
+        ]
+        == 0
+    )
+
+
+@pytest.fixture
+def reconcile_setup(setup):
+    controller, backend, clock, saved = setup
+    controller.state.update(sequence=7, generation="b" * 32, reason="operation-failed")
+    controller.state["lease"] = {
+        "pid": 123,
+        "sequence": 7,
+        "generation": "a" * 32,
+        "state": "ready",
+        "started": 80.0,
+    }
+    proof = {
+        "version": 1,
+        "reconciled": True,
+        "pid": 123,
+        "sequence": 7,
+        "generation": "a" * 32,
+        "state": "ready",
+        "boot_id": "12345678-1234-1234-1234-123456789abc",
+        "expires_uptime_seconds": 120,
+        "observed_uptime_seconds": 121,
+        "lease_sha256": "c" * 64,
+        "journal_sha256": "d" * 64,
+    }
+    backend.reconcile_lease = lambda record: dict(proof)
+    receipts = []
+    return controller, backend, clock, saved, proof, receipts
+
+
+def test_reconcile_records_receipt_before_clear_and_next_tick_only_publishes_hold(reconcile_setup):
+    controller, backend, _, saved, proof, receipts = reconcile_setup
+    pending = dict(controller.state["lease"])
+
+    def audit(receipt):
+        assert controller.state["lease"] == pending
+        receipts.append(receipt)
+
+    controller.reconcile_lease(audit)
+    assert len(receipts) == 1 and receipts[0]["pending_lease"] == pending
+    assert receipts[0]["proof"] == proof
+    assert saved[-1]["lease"] is None
+    assert saved[-1]["mode"] == "hold" and saved[-1]["reason"] == "lease-reconciled"
+    assert backend.started == []
+    controller.tick()
+    assert controller.state["mode"] == "hold"
+    assert controller.state["lease"]["sequence"] == 8
+    assert backend.started == [
+        ("playback", ["lease-hold", "--generation", "b" * 32, "--sequence", "8"])
+    ]
+
+
+@pytest.mark.parametrize("mutation", ["armed", "probe", "missing-pid", "zero-pid", "no-lease"])
+def test_reconcile_preconditions_preserve_pending_and_never_launch(reconcile_setup, mutation):
+    controller, backend, _, _, _, receipts = reconcile_setup
+    if mutation == "armed":
+        controller.state["mode"] = "armed"
+    elif mutation == "probe":
+        controller.state["probe"] = {
+            "pid": 99,
+            "nonce": "a" * 32,
+            "started": 1,
+            "generation": "a" * 32,
+        }
+        backend.pending[99] = None
+    elif mutation == "no-lease":
+        controller.state["lease"] = None
+    else:
+        controller.state["lease"]["pid"] = None if mutation == "missing-pid" else 0
+    pending = json.loads(json.dumps(controller.state))
+    with pytest.raises(ValueError):
+        controller.reconcile_lease(receipts.append)
+    assert controller.state == pending
+    assert receipts == [] and backend.started == []
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("pid", 124),
+        ("pid", True),
+        ("sequence", 8),
+        ("generation", "b" * 32),
+        ("state", "hold"),
+        ("boot_id", "unknown"),
+        ("reconciled", 1),
+        ("version", True),
+        ("expires_uptime_seconds", 122),
+        ("observed_uptime_seconds", True),
+        ("lease_sha256", "x" * 64),
+        ("journal_sha256", None),
+        ("extra", "unexpected"),
+    ],
+)
+def test_reconcile_rejects_malformed_or_mismatched_response(reconcile_setup, field, value):
+    controller, backend, _, saved, proof, receipts = reconcile_setup
+    proof[field] = value
+    pending = dict(controller.state["lease"])
+    with pytest.raises(ValueError):
+        controller.reconcile_lease(receipts.append)
+    assert controller.state["lease"] == pending and controller.state["mode"] == "hold"
+    assert saved[-1]["reason"] == "lease-reconciliation-refused"
+    assert receipts == [] and backend.started == []
+
+
+@pytest.mark.parametrize("failure", ["transport", "pending", "receipt"])
+def test_reconcile_failure_never_discards_pending(reconcile_setup, failure):
+    controller, backend, _, _, _, receipts = reconcile_setup
+    pending = dict(controller.state["lease"])
+
+    def unavailable(*_):
+        raise OSError("private diagnostic not for persisted reason")
+
+    audit = unavailable if failure == "receipt" else receipts.append
+    if failure == "transport":
+        backend.reconcile_lease = unavailable
+    elif failure == "pending":
+        backend.reconcile_lease = lambda _: None
+    with pytest.raises((OSError, ValueError)):
+        controller.reconcile_lease(audit)
+    assert controller.state["lease"] == pending and controller.state["mode"] == "hold"
+    assert receipts == [] and backend.started == []
+
+
+def test_qga_reconciliation_uses_fixed_bounded_read_only_command(supervisor, pve_profile):
+    backend = supervisor.QgaBackend(pve_profile)
+    called = []
+    backend.run = lambda args: called.append(args) or '{"exited":0}'
+    record = {"pid": 123, "sequence": 7, "generation": "a" * 32, "state": "ready"}
+    assert backend.reconcile_lease(record) is None
+    assert called == [
+        [
+            "guest",
+            "exec",
+            "121",
+            "--synchronous",
+            "1",
+            "--timeout",
+            "5",
+            "--",
+            "/usr/bin/python3",
+            "-B",
+            supervisor.GUEST_HELPER,
+            "reconcile-lease",
+            "--pid",
+            "123",
+            "--sequence",
+            "7",
+            "--generation",
+            "a" * 32,
+            "--state",
+            "ready",
+        ]
+    ]
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("pid", None),
+        ("pid", -1),
+        ("pid", True),
+        ("sequence", "7;echo bad"),
+        ("generation", "a;echo bad"),
+        ("state", "probe"),
+    ],
+)
+def test_qga_reconciliation_rejects_untrusted_arguments(supervisor, pve_profile, field, value):
+    backend = supervisor.QgaBackend(pve_profile)
+    called = []
+    backend.run = lambda args: called.append(args) or "{}"
+    record = {"pid": 123, "sequence": 7, "generation": "a" * 32, "state": "ready"}
+    record[field] = value
+    with pytest.raises(ValueError):
+        backend.reconcile_lease(record)
+    assert called == []
+
+
+def test_reconcile_cli_saves_atomic_receipt_without_ticking(
+    supervisor, pve_profile, reconcile_setup, tmp_path, monkeypatch
+):
+    import hashlib
+
+    controller, backend, _, _, _, _ = reconcile_setup
+    state = controller.state
+    state["host_boot_id"] = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+    state["profile_digest"] = hashlib.sha256(
+        json.dumps(pve_profile, sort_keys=True).encode()
+    ).hexdigest()
+    config = tmp_path / "profile.json"
+    config.write_text(json.dumps(pve_profile))
+    (tmp_path / "state.json").write_text(json.dumps(state))
+    monkeypatch.setattr(supervisor, "DIRECTORY", tmp_path)
+    monkeypatch.setattr(supervisor, "CONFIG", config)
+    monkeypatch.setattr(supervisor.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(supervisor, "trusted", lambda path, **_: path.lstat())
+    monkeypatch.setattr(supervisor, "QgaBackend", lambda _: backend)
+    writes = []
+    original = supervisor.atomic_state
+
+    def record_write(path, value):
+        original(path, value)
+        writes.append(path.name)
+
+    monkeypatch.setattr(supervisor, "atomic_state", record_write)
+    result = supervisor.one("reconcile-lease")
+    assert result["mode"] == "hold" and result["pending_lease"] is False
+    assert writes == ["lease-reconciliation.json", "state.json"]
+    receipt_path = tmp_path / "lease-reconciliation.json"
+    receipt = json.loads(receipt_path.read_text())
+    assert receipt["pending_lease"] == state["lease"]
+    assert receipt_path.stat().st_mode & 0o777 == 0o600
+    assert backend.started == []
+
+
+def test_reconcile_cli_busy_is_not_success(supervisor, monkeypatch, capsys):
+    import sys
+
+    monkeypatch.setattr(sys, "argv", ["storage_supervisor.py", "reconcile-lease"])
+    monkeypatch.setattr(supervisor, "one", lambda _: {"mode": "busy"})
+    assert supervisor.main() == 75
+    assert json.loads(capsys.readouterr().out) == {"mode": "busy"}
+
+
+def test_guest_reconciliation_cli_rejects_core_profile(guest, reconciliation_files, monkeypatch):
+    import sys
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "guest-storage-probe.py",
+            "reconcile-lease",
+            "--pid",
+            "123",
+            "--sequence",
+            "7",
+            "--generation",
+            "a" * 32,
+            "--state",
+            "ready",
+        ],
+    )
+    monkeypatch.setattr(guest.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(guest, "read_profile", lambda: {"version": 1, "role": "core"})
+    assert guest.main() == 1
+
+
+def test_guest_reconciliation_cli_returns_proof(guest, reconciliation_files, monkeypatch, capsys):
+    import sys
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "guest-storage-probe.py",
+            "reconcile-lease",
+            "--pid",
+            "123",
+            "--sequence",
+            "7",
+            "--generation",
+            "a" * 32,
+            "--state",
+            "ready",
+        ],
+    )
+    monkeypatch.setattr(guest.os, "geteuid", lambda: 0)
+    monkeypatch.setattr(guest, "read_profile", lambda: {"version": 1, "role": "playback"})
+    assert guest.main() == 0
+    assert json.loads(capsys.readouterr().out)["reconciled"] is True
+
+
+def test_reconcile_cannot_clear_indefinitely_pending_core_probe(reconcile_setup):
+    controller, backend, clock, _, _, receipts = reconcile_setup
+    controller.state["probe"] = {"pid": 99, "nonce": "a" * 32, "started": 1, "generation": "a" * 32}
+    backend.pending[99] = backend.pending[123] = None
+    with pytest.raises(ValueError):
+        controller.reconcile_lease(receipts.append)
+    for _ in range(20):
+        clock[0] += 60
+        controller.tick()
+    with pytest.raises(ValueError, match="pending"):
+        controller.request("resume")
+    assert controller.state["probe"]["pid"] == 99
+    assert controller.state["lease"]["pid"] == 123
+    assert controller.state["mode"] == "hold"
+    assert receipts == [] and backend.started == []
+
+
+@pytest.mark.parametrize("field", ["version", "sequence"])
+def test_terminal_lease_boolean_numbers_are_rejected_atomically(setup, field):
+    controller, backend, _, saved = setup
+    controller.request("arm")
+    controller.tick()
+    complete_probe(controller, backend)
+    controller.tick()
+    complete_lease(controller, backend)
+    backend.pending[controller.state["lease"]["pid"]][field] = True
+    saved.clear()
+    controller.poll_lease()
+    assert len(saved) == 1
+    assert saved[0]["lease"] is None
+    assert saved[0]["mode"] == "hold" and saved[0]["reason"] == "lease-rejected"
+
+
+@pytest.mark.parametrize("outer", ["{", '{"exited":"1"}', '{"error":"missing-pid"}'])
+def test_ambiguous_outer_reply_keeps_core_probe_fenced(supervisor, pve_profile, setup, outer):
+    controller, backend, clock, _ = setup
+    controller.request("arm")
+    controller.tick()
+    pending = dict(controller.state["probe"])
+    qga = supervisor.QgaBackend(pve_profile)
+    qga.run = lambda _: outer
+    backend.poll = qga.poll
+    for _ in range(3):
+        clock[0] += 20
+        controller.tick()
+    assert controller.state["mode"] == "hold" and controller.state["probe"] == pending
+    assert len(backend.started) == 1
+
+
+def test_malformed_exited_core_reply_clears_only_completed_probe(supervisor, pve_profile, setup):
+    controller, backend, _, saved = setup
+    controller.request("arm")
+    controller.tick()
+    qga = supervisor.QgaBackend(pve_profile)
+    qga.run = lambda _: '{"exited":1,"exitcode":0,"out-data":"{"}'
+    backend.poll = qga.poll
+    controller.tick()
+    assert controller.state["probe"] is None and controller.state["mode"] == "hold"
+    assert controller.state["lease"]["state"] == "hold"
+    assert len([role for role, _ in backend.started if role == "core"]) == 1
+    assert saved[-1]["mode"] == "hold"

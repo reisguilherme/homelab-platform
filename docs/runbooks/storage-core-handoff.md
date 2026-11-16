@@ -210,6 +210,45 @@ automático ou retomada com identidade incerta. I/O preso em NFS `hard`, energia
 do HD e reintegração física continuam com limites próprios. Não remover um
 `HOLD` ou renovar autorização apenas para obter saúde aparente.
 
+### Publicação concluída sem confirmação QGA
+
+O QGA pode remover o registro de um processo terminado ao consultar seu status.
+Assim, PID ausente no QGA não distingue confirmação já consumida de outras
+falhas de transporte. Não afirmar a causa original sem evidência. O supervisor
+trata `exited` externo conclusivo com JSON interno inválido como conclusão
+falhada e persiste essa classificação junto da remoção da lease pendente.
+Uma confirmação válida de geração antiga também é persistida, sem readmissão.
+
+Quando somente a publicação da lease ficou pendente, a ação explícita no PVE é:
+
+```sh
+python3 -B /usr/local/lib/homelab-storage/storage_supervisor.py reconcile-lease
+python3 -B /usr/local/lib/homelab-storage/storage_supervisor.py status
+```
+
+Ela só aceita HOLD, ausência de probe pendente e PID positivo conhecido da
+publicação. O helper somente leitura da playback precisa obter `lease.lock`
+sem espera e comprovar, em conjunto, PID ausente de `/proc`, journal na sequência
+esperada e lease da geração/estado esperados, do boot atual e já expirada.
+Para HOLD, expiry precisa ser zero. Ausência de PID no QGA, journal, lock ou
+tempo decorrido isoladamente não autorizam a limpeza. Arquivo ausente,
+malformado, não confiável, symlink, identidade divergente, lock ocupado e
+timeout preservam a pendência e o HOLD.
+
+O supervisor valida a prova e grava primeiro um recibo atômico privado no SSD
+do PVE, em `/var/lib/homelab-storage-supervisor/lease-reconciliation.json`,
+contendo prova sanitizada e registro original pendente. Mantém somente o recibo
+atual, fora do Git. Depois limpa apenas a publicação comprovada, com
+`reason: lease-reconciled`; não faz arm, start, probe de mídia, mount ou reparo.
+O próximo tick normal publica HOLD com sequência maior. Conferir a conclusão
+dessa publicação antes de pedir `resume`, que continua explícito e exige prova
+nova. Se o lock do supervisor estiver ocupado, o código 75 significa que a
+ação não foi aplicada.
+
+O comando não resolve probe do core preso, PID desconhecido, falha física de
+USB ou revisão após reboot. As fixtures Linux que cobrem essas recusas não
+comprovam recuperação física, funcionamento contínuo nem testes de hardware.
+
 ## Limites e próxima etapa
 
 Essa entrega estabelece a leitura remota de mídia por um consumidor e

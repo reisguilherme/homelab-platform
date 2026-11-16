@@ -80,6 +80,39 @@ class Controller:
         )
         self.persist()
 
+    def reconcile_lease(self, receipt):
+        if self.state["mode"] != "hold" or self.state["probe"] is not None:
+            raise ValueError("lease-reconciliation-precondition")
+        validate_reconciliation_record(self.state["lease"])
+        record = dict(self.state["lease"])
+        try:
+            self.backend.verify_profile()
+            proof = self.backend.reconcile_lease(record)
+            validate_reconciliation_proof(proof, record)
+            if (
+                self.state["lease"] != record
+                or self.state["mode"] != "hold"
+                or self.state["probe"] is not None
+            ):
+                raise ValueError("lease-reconciliation-changed")
+            # This durable receipt must precede the durable removal of the pending record.
+            receipt(
+                {
+                    "version": 1,
+                    "reason": "lease-reconciled",
+                    "host_boot_id": self.state["host_boot_id"],
+                    "profile_digest": self.state["profile_digest"],
+                    "observed_unix_seconds": int(self.wall_clock()),
+                    "pending_lease": record,
+                    "proof": proof,
+                }
+            )
+        except (OSError, ValueError, RuntimeError, KeyError, TypeError, subprocess.SubprocessError):
+            self.hold("lease-reconciliation-refused")
+            raise ValueError("lease-reconciliation-refused") from None
+        self.state.update(lease=None, reason="lease-reconciled", hold_published=False)
+        self.persist()
+
     def launch_probe(self):
         record = {
             "pid": None,
@@ -123,9 +156,10 @@ class Controller:
             self.hold("lease-launch-ambiguous")
             return
         result = self.backend.poll("playback", record["pid"])
-        if self.clock() - record["started"] > LEASE_DEADLINE:
-            self.hold("lease-timeout")
+        expired = self.clock() - record["started"] > LEASE_DEADLINE
         if result is None:
+            if expired:
+                self.hold("lease-timeout")
             return
         self.state["lease"] = None
         expected = {
@@ -135,12 +169,23 @@ class Controller:
             "generation": record["generation"],
             "state": record["state"],
         }
-        if result != expected:
+        if (
+            result != expected
+            or type(result["version"]) is not int
+            or type(result["sequence"]) is not int
+            or result["written"] is not True
+        ):
             self.hold("lease-rejected")
-        elif record["state"] == "hold" and record["generation"] == self.state["generation"]:
-            self.state["hold_published"] = True
+        elif expired:
+            self.hold("lease-timeout")
+        elif record["generation"] != self.state["generation"]:
+            self.state["reason"] = "lease-completed-stale"
             self.persist()
-        elif self.state["mode"] == "armed" and record["generation"] == self.state["generation"]:
+        elif record["state"] == "hold":
+            self.state["hold_published"] = True
+            self.state["reason"] = "lease-hold-published"
+            self.persist()
+        else:
             self.state["reason"] = "healthy-lease-published"
             self.persist()
 
@@ -285,6 +330,64 @@ def validate_profile(profile):
     return profile
 
 
+def validate_reconciliation_record(record):
+    if (
+        not isinstance(record, dict)
+        or type(record.get("pid")) is not int
+        or not 1 <= record["pid"] <= 2**31 - 1
+        or type(record.get("sequence")) is not int
+        or not 1 <= record["sequence"] <= 2**63 - 1
+        or not isinstance(record.get("generation"), str)
+        or not re.fullmatch(r"[0-9a-f]{32}", record["generation"])
+        or record.get("state") not in {"ready", "hold"}
+    ):
+        raise ValueError("lease-reconciliation-record")
+
+
+def validate_reconciliation_proof(proof, record):
+    if (
+        not isinstance(proof, dict)
+        or set(proof)
+        != {
+            "version",
+            "reconciled",
+            "pid",
+            "sequence",
+            "generation",
+            "state",
+            "boot_id",
+            "expires_uptime_seconds",
+            "observed_uptime_seconds",
+            "lease_sha256",
+            "journal_sha256",
+        }
+        or type(proof["version"]) is not int
+        or proof["version"] != 1
+        or proof["reconciled"] is not True
+    ):
+        raise ValueError("lease-reconciliation-proof")
+    validate_reconciliation_record(proof)
+    if any(proof[key] != record[key] for key in ("pid", "sequence", "generation", "state")):
+        raise ValueError("lease-reconciliation-mismatch")
+    for field, pattern in (
+        ("boot_id", r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}"),
+        ("lease_sha256", r"[0-9a-f]{64}"),
+        ("journal_sha256", r"[0-9a-f]{64}"),
+    ):
+        if not isinstance(proof[field], str) or not re.fullmatch(pattern, proof[field]):
+            raise ValueError("lease-reconciliation-identity")
+    for field in ("expires_uptime_seconds", "observed_uptime_seconds"):
+        if type(proof[field]) is not int or not 0 <= proof[field] <= 2**63 - 1:
+            raise ValueError("lease-reconciliation-time")
+    expiry = proof["expires_uptime_seconds"]
+    if (
+        expiry > proof["observed_uptime_seconds"]
+        or (proof["state"] == "hold" and expiry != 0)
+        or (proof["state"] == "ready" and expiry == 0)
+    ):
+        raise ValueError("lease-reconciliation-expiry")
+
+
 class QgaBackend:
     def __init__(self, profile):
         self.profile = validate_profile(profile)
@@ -359,6 +462,40 @@ class QgaBackend:
                 ]
             )
         )
+        return self.completion(result)
+
+    def reconcile_lease(self, record):
+        validate_reconciliation_record(record)
+        result = strict_json(
+            self.run(
+                [
+                    "guest",
+                    "exec",
+                    str(self.profile["playback_vmid"]),
+                    "--synchronous",
+                    "1",
+                    "--timeout",
+                    "5",
+                    "--",
+                    "/usr/bin/python3",
+                    "-B",
+                    GUEST_HELPER,
+                    "reconcile-lease",
+                    "--pid",
+                    str(record["pid"]),
+                    "--sequence",
+                    str(record["sequence"]),
+                    "--generation",
+                    record["generation"],
+                    "--state",
+                    record["state"],
+                ]
+            )
+        )
+        return self.completion(result)
+
+    @staticmethod
+    def completion(result):
         if (
             not isinstance(result, dict)
             or type(result.get("exited")) not in {int, bool}
@@ -375,9 +512,13 @@ class QgaBackend:
         ):
             return {"failed": True}
         value = result.get("out-data", "")
-        if len(value) > 16384:
+        if not isinstance(value, str) or len(value) > 16384:
             return {"failed": True}
-        return strict_json(value)
+        try:
+            decoded = strict_json(value)
+        except (ValueError, RecursionError):
+            return {"failed": True}
+        return decoded if isinstance(decoded, dict) else {"failed": True}
 
 
 def validate_state(state, boot_id, profile_digest):
@@ -464,7 +605,11 @@ def one(action):
         controller = Controller(state, QgaBackend(profile), uptime, time.time, persist)
         if action in {"arm", "resume", "hold"}:
             controller.request(action)
-        if action != "status":
+        if action == "reconcile-lease":
+            controller.reconcile_lease(
+                lambda receipt: atomic_state(DIRECTORY / "lease-reconciliation.json", receipt)
+            )
+        elif action != "status":
             controller.tick()
         return {
             "mode": state["mode"],
@@ -476,7 +621,9 @@ def one(action):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["arm", "resume", "hold", "tick", "watch", "status"])
+    parser.add_argument(
+        "action", choices=["arm", "resume", "hold", "tick", "watch", "status", "reconcile-lease"]
+    )
     parser.add_argument("--seconds", type=int, default=58)
     args = parser.parse_args()
     if not 1 <= args.seconds <= 58:
@@ -489,7 +636,10 @@ def main():
             print(json.dumps({"mode": "hold", "reason": "supervisor-review-required"}))
             return 1
         print(json.dumps(result), flush=True)
-        if args.action in {"arm", "resume", "hold"} and result.get("mode") == "busy":
+        if (
+            args.action in {"arm", "resume", "hold", "reconcile-lease"}
+            and result.get("mode") == "busy"
+        ):
             return 75
         if args.action != "watch" or time.monotonic() + 2 >= until:
             return 0

@@ -161,7 +161,45 @@ lançamento QGA pode ter deixado um processo real sem PID recebido: diagnosticar
 via console/QGA e evidência privada, sem limpar o estado para contornar a dúvida.
 Mudança de boot PVE ou perfil também exige revisão do estado, mantendo fechado.
 
-`arm`, `resume` ou `hold` retornam **75** quando o lock está ocupado, com
+Uma publicação pode terminar na playback e perder sua confirmação QGA. Quando
+o status externo confirma `exited`, saída interna ausente ou inválida é falha
+terminal: o supervisor persiste a classificação e limpa essa publicação em
+HOLD. Uma confirmação válida de geração antiga também é persistida sem
+readmissão. Falha de transporte, status externo inválido ou PID ausente no
+QGA continuam ambíguos; não autorizam descartar uma execução de mídia.
+
+Para uma **lease** pendente com PID positivo conhecido, existe a ação manual:
+
+```sh
+python3 -B /usr/local/lib/homelab-storage/storage_supervisor.py reconcile-lease
+python3 -B /usr/local/lib/homelab-storage/storage_supervisor.py status
+```
+
+Ela exige HOLD e nenhum probe do core pendente. O helper fixo da playback
+obtém o `lease.lock` existente sem esperar, somente para leitura dos arquivos,
+e exige simultaneamente: PID ausente de `/proc`, journal com a sequência exata,
+lease com geração/estado exatos, boot igual ao boot atual do guest e validade
+expirada (`hold` exige expiry zero). Arquivos precisam ser confiáveis, regulares,
+limitados e sem symlinks. A prova devolve essas identidades e hashes dos dois
+arquivos; o supervisor valida a resposta contra a publicação ainda pendente.
+O comando do helper tem prazo de 5 s e cada chamada `qm` continua limitada a 8 s.
+
+Antes de limpar o registro, o PVE grava atomicamente, com fsync e modo 0600,
+`/var/lib/homelab-storage-supervisor/lease-reconciliation.json`: um único recibo
+atual com prova e registro original pendente, sem credenciais. Esse estado
+privado fica no SSD, fora do Git; não é um sistema de backups. Falha da prova,
+timeout ou falha ao gravar o recibo preserva a pendência e o HOLD. Uma resposta
+de PID ausente do QGA, tempo decorrido, journal ou lock isolados não bastam.
+
+No sucesso, `reason: lease-reconciled` e `pending_lease: false` confirmam a
+limpeza; o modo continua HOLD. A ação não faz tick. O próximo tick normal
+publica HOLD com sequência maior, e só depois de sua conclusão pode ser pedido
+`resume` explícito para obter prova nova. Não há arm, start, probe do core,
+remount ou reparo nessa reconciliação. Um probe preso ou publicação sem PID
+conhecido continua exigindo diagnóstico privado; o comando não remove essa
+proteção nem substitui revisão após reboot.
+
+`arm`, `resume`, `hold` ou `reconcile-lease` retornam **75** quando o lock está ocupado, com
 `{"mode":"busy"}`: a ação **não foi aplicada**. Repetir de forma limitada após
 pequena espera e confirmar o resultado pelo JSON e por `status`; nunca tratar
 apenas o término do processo como confirmação. Para `arm`/`resume`, conferir

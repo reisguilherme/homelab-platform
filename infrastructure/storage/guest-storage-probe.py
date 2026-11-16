@@ -15,6 +15,7 @@ import math
 import mmap
 import os
 import re
+import signal
 import stat
 import subprocess
 import tempfile
@@ -23,6 +24,7 @@ from pathlib import Path
 
 CONFIG = Path("/etc/homelab-storage.json")
 STATE = Path("/var/lib/homelab-storage")
+PROC = Path("/proc")
 MOUNT = Path("/srv/external3")
 FIXTURE = MOUNT / ".homelab-storage/health.bin"
 UUID = r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}"
@@ -170,6 +172,106 @@ def publish_lease(
         "generation": generation,
         "state": state,
     }
+
+
+def open_trusted_readonly(path, *, private=False):
+    before = trusted(path, private=private)
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    opened = os.fstat(descriptor)
+    if not stat.S_ISREG(opened.st_mode) or (
+        before.st_dev,
+        before.st_ino,
+        before.st_mode,
+        before.st_uid,
+        before.st_nlink,
+    ) != (opened.st_dev, opened.st_ino, opened.st_mode, opened.st_uid, opened.st_nlink):
+        os.close(descriptor)
+        raise ValueError("reconciliation-file-changed")
+    return descriptor
+
+
+def read_bounded(path, *, private=False):
+    with os.fdopen(open_trusted_readonly(path, private=private), "rb") as stream:
+        if os.fstat(stream.fileno()).st_size > 4096:
+            raise ValueError("reconciliation-file-size")
+        value = stream.read(4097)
+    if len(value) > 4096:
+        raise ValueError("reconciliation-file-size")
+    return value
+
+
+def reconcile_lease(profile, pid, sequence, generation, state):
+    """Observe only SSD/proc state under the existing publication lock; never publish."""
+    if (
+        profile != {"version": 1, "role": "playback"}
+        or type(pid) is not int
+        or not 1 <= pid <= 2**31 - 1
+        or type(sequence) is not int
+        or not 1 <= sequence <= 2**63 - 1
+        or not isinstance(generation, str)
+        or not re.fullmatch(GENERATION, generation)
+        or state not in {"ready", "hold"}
+    ):
+        raise ValueError("reconciliation-arguments")
+    trusted(STATE, directory=True)
+    trusted(STATE / "admission", directory=True)
+    with os.fdopen(open_trusted_readonly(STATE / "lease.lock", private=True), "rb") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try:
+            (PROC / str(pid)).lstat()
+        except FileNotFoundError:
+            pass
+        else:
+            raise ValueError("reconciliation-pid-present")
+        # Kernel pseudo-files are fixed paths, bounded independently of file size.
+        with (PROC / "sys/kernel/random/boot_id").open("rb") as stream:
+            boot = stream.read(4097).decode("ascii").strip()
+        with (PROC / "uptime").open("rb") as stream:
+            uptime_text = stream.read(4097).decode("ascii")
+        if not re.fullmatch(UUID, boot) or not re.fullmatch(
+            r"[0-9]{1,16}(?:\.[0-9]+)? [0-9]{1,20}(?:\.[0-9]+)?\n?", uptime_text
+        ):
+            raise ValueError("reconciliation-boot-time")
+        uptime = int(float(uptime_text.split()[0]))
+        journal_bytes = read_bounded(STATE / "lease-state.json", private=True)
+        journal = strict_json(journal_bytes)
+        if (
+            not isinstance(journal, dict)
+            or set(journal) != {"version", "sequence"}
+            or type(journal["version"]) is not int
+            or journal["version"] != 1
+            or type(journal["sequence"]) is not int
+            or journal["sequence"] != sequence
+        ):
+            raise ValueError("reconciliation-journal")
+        lease_bytes = read_bounded(STATE / "admission/lease")
+        match = re.fullmatch(
+            rf"version=1\nstate=(ready|hold)\nboot_id=({UUID})\ngeneration=({GENERATION})\n"
+            r"expires_uptime_seconds=(0|[1-9][0-9]{0,15})\n",
+            lease_bytes.decode("ascii"),
+        )
+        if match is None or match.group(1, 2, 3) != (state, boot, generation):
+            raise ValueError("reconciliation-lease")
+        expiry = int(match.group(4))
+        if (
+            expiry > uptime
+            or (state == "hold" and expiry != 0)
+            or (state == "ready" and expiry == 0)
+        ):
+            raise ValueError("reconciliation-expiry")
+        return {
+            "version": 1,
+            "reconciled": True,
+            "pid": pid,
+            "sequence": sequence,
+            "generation": generation,
+            "state": state,
+            "boot_id": boot,
+            "expires_uptime_seconds": expiry,
+            "observed_uptime_seconds": uptime,
+            "lease_sha256": hashlib.sha256(lease_bytes).hexdigest(),
+            "journal_sha256": hashlib.sha256(journal_bytes).hexdigest(),
+        }
 
 
 def mount_identity(text, device):
@@ -347,17 +449,26 @@ def core_probe(profile, nonce):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["probe", "lease-ready", "lease-hold"])
+    parser.add_argument("action", choices=["probe", "lease-ready", "lease-hold", "reconcile-lease"])
     parser.add_argument("--nonce")
     parser.add_argument("--generation")
     parser.add_argument("--sequence", type=int)
     parser.add_argument("--not-after", type=int, default=0)
+    parser.add_argument("--pid", type=int)
+    parser.add_argument("--state", choices=["ready", "hold"])
     args = parser.parse_args()
     result = {"version": 1, "healthy": False, "reason": "probe-refused"}
     try:
         if os.geteuid() != 0:
             raise ValueError("root-required")
+        if args.action == "reconcile-lease":
+            # A lost QGA reply must not leave an unbounded reconciliation helper.
+            signal.alarm(5)
         profile = read_profile()
+        if args.action == "reconcile-lease":
+            result = reconcile_lease(profile, args.pid, args.sequence, args.generation, args.state)
+            print(json.dumps(result))
+            return 0
         trusted(STATE, directory=True)
         lock_path = STATE / ("probe.lock" if args.action == "probe" else "lease.lock")
         fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
@@ -388,6 +499,9 @@ def main():
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
         print(json.dumps(result))
         return 1
+    finally:
+        if args.action == "reconcile-lease":
+            signal.alarm(0)
     print(json.dumps(result))
     return 0
 
