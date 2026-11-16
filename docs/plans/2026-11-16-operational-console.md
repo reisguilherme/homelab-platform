@@ -46,7 +46,7 @@ Não remover isolamento nem diminuir RAM apenas para melhorar um número.
   ações, desktop/mobile e ausência de exposição de credenciais.
 - [x] Implantar alterações coordenadas, medir RAM, verificar discos e serviços reais,
   fazer ensaio limitado de ação reversível e preservar as configurações privadas.
-- [ ] Atualizar guias e publicar mudanças revisadas na branch refactor.
+- [x] Atualizar guias e publicar mudanças revisadas na branch refactor.
 
 ## Verificação
 
@@ -54,3 +54,13 @@ Python 3.12/Linux, testes com fixtures isoladas; sintaxe JavaScript e ensaio de
 navegador. Testes unitários não comprovam hardware: recibos privados registram
 inventário real, disponibilidade por HTTPS, ação concluída e medidas antes/depois.
 Não armazenar segredos, dados brutos ou identidades físicas reais neste documento.
+
+## Aceite realizado
+
+A implantação foi aceita por inventário real dos cinco discos, coleta dos
+serviços das três VMs e restart idempotente/auditado somente do coletor PVE.
+O navegador mostrou 17 cards e dez links privados, com desktop/mobile sem
+erros de JavaScript. O proprietário confirmou reprodução pela TV no endereço
+LAN raiz. Seerr foi publicado com a grafia `overseer.greis.dev.br` escolhida
+por ele. Os guias registram as medidas de memória e os limites que permanecem.
+Código e documentação foram publicados em `refactor` no commit `4fb6d6e`.

@@ -853,9 +853,61 @@
                 }
               }
             }
-          ]
+          ],
+          "custom": {
+            "minWidth": 60
+          }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "VM"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 165
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Mount"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 165
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Acesso"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 135
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Dispositivo"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 200
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "showHeader": true,
@@ -879,8 +931,8 @@
             "indexByName": {
               "guest": 0,
               "mountpoint": 1,
-              "device": 2,
-              "Value": 3
+              "Value": 2,
+              "device": 3
             },
             "renameByName": {
               "guest": "VM",
