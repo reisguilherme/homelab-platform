@@ -1,5 +1,27 @@
 # Estado da implementação
 
+## Publicação do acervo em 16/11
+
+A migração da autoridade de storage para o protocolo v2 foi aplicada em HOLD,
+com backup da configuração e readmissão explícita. Core e playback recebem
+leases distintas; a lease `core-writer` foi observada READY, renovando pelo cron
+existente. Jellyfin respondeu saudável e os seis targets de monitoramento
+permaneceram ativos. Isso não comprova recuperação USB automática.
+
+Foram publicados **8.209 caminhos de 6.023 arquivos únicos**, totalizando
+**5.449.345.898.283 bytes**, do staging para as pastas finais `media` e `torrents`
+do hub. A publicação por hardlinks levou 80 segundos, sem colisões, sobrescrita
+ou exclusão. Seis arquivos auxiliares de recuperação ficaram fora da biblioteca.
+O critério foi recibo histórico autenticado e metadados atuais; não houve nova
+releitura integral do conteúdo. Os nomes temporários continuam presentes, mas
+compartilham os inodes publicados e não são um backup independente.
+
+Uma amostra recém-publicada de cada origem passou pelo HTTP do Jellyfin e por
+três trechos de decodificação: nove trechos no total, com histórico de usuários
+inalterado e mídia RO. Não é um teste de todos os arquivos ou de cliente externo.
+O delta final das origens, o arquivo degradado e a retomada da automação ainda
+estão abertos. Os registros anteriores abaixo descrevem suas respectivas etapas.
+
 Atualização documental: **16/11/2026**. A publicação inicial de 14/11 estabeleceu
 a separação de repositórios na branch `refactor`. **O proprietário instalou
 Proxmox no SSD de sistema autorizado, e a entrega do host identificado e
@@ -138,9 +160,9 @@ pendentes, sem bloquear a recuperação do acervo.
   histórico ainda precisa ser reconciliado; journals das origens continuam
   pendentes. Nada foi apagado, sobrescrito ou publicado nesta conferência.
 
-A extensão de lease para escritores do core está preparada e revisada, mas
-não implantada. O contrato v2 preserva o consumidor de playback e exige migração
-explícita em HOLD; não altera automaticamente as permissões dos aplicativos.
+A extensão de lease para escritores do core foi posteriormente implantada,
+como registrado no início deste documento. A migração explícita em HOLD
+preservou playback; ela não libera automaticamente permissões dos aplicativos.
 O Compose do core continua recusando inicialização. O resumo acima distingue
 restauração, metadados e verificação de conteúdo; não declara o core concluído.
 
