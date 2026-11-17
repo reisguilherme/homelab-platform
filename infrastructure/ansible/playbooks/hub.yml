@@ -85,6 +85,39 @@
         path: /opt/homelab-hub/.env
       register: hub_env
 
+    - name: Check whether Authelia users_database.yml is provisioned
+      ansible.builtin.stat:
+        path: /srv/hub/authelia/users_database.yml
+      register: authelia_users_db
+
+    - name: Generate /srv/hub/authelia/users_database.yml for unified root user
+      ansible.builtin.shell: |
+        set -euo pipefail
+        set -a
+        . /opt/homelab-hub/.env
+        set +a
+        ROOT_USER="${ROOT_USERNAME:-root}"
+        PASS="${ROOT_PASSWORD:?ROOT_PASSWORD must be defined in /opt/homelab-hub/.env}"
+        HASH="$(docker run --rm authelia/authelia:4.38 authelia crypto hash generate argon2 --password "${PASS}" | sed -n 's/^Digest: //p')"
+        test -n "${HASH}"
+        umask 0177
+        cat > /srv/hub/authelia/users_database.yml <<EOF
+        users:
+          ${ROOT_USER}:
+            disabled: false
+            displayname: "HomeServer Root"
+            password: "${HASH}"
+            email: root@greis.dev.br
+            groups:
+              - admins
+        EOF
+      args:
+        executable: /bin/bash
+      no_log: true
+      when:
+        - hub_env.stat.exists
+        - not authelia_users_db.stat.exists
+
     - name: Start Hub Docker Compose stack when .env is present
       ansible.builtin.command:
         cmd: docker compose up -d --remove-orphans

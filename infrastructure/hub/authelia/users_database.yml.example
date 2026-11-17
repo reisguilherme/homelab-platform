@@ -1,0 +1,11 @@
+# Copiar ou deixar Ansible gerar automaticamente em /srv/hub/authelia/users_database.yml (permissao 0600)
+# Gerar hash da mesma ROOT_PASSWORD configurada em /opt/homelab-hub/.env:
+#   docker run --rm authelia/authelia:4.38 authelia crypto hash generate argon2 --password '<ROOT_PASSWORD>'
+users:
+  root:
+    disabled: false
+    displayname: "HomeServer Root"
+    password: "$argon2id$v=19$m=65536,t=3,p=4$REPLACE_WITH_SALT$REPLACE_WITH_ARGON2ID_HASH"
+    email: root@greis.dev.br
+    groups:
+      - admins

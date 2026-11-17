@@ -8,10 +8,13 @@ Este roteiro executa a transição limpa para `VM 100 (homelab-hub)` + `VM 200 (
    - No painel do Registro.br, apontar os Nameservers (NS) de `greis.dev.br` para a Cloudflare (plano gratuito).
    - Criar na Cloudflare um API Token com permissão `Zone:DNS:Edit` apenas para a zona `greis.dev.br` (`CF_DNS_API_TOKEN`).
    - Configurar os registros `A` iniciais apontando `*.greis.dev.br` para o IP Tailscale da futura `homelab-hub` (com proxy nuvem cinza / **DNS-only**).
-2. **Gerar Chave Mestra SOPS/Age:**
-   - Executar `age-keygen -o ~/.config/sops/age/keys.txt` na estação de trabalho (guardar backup seguro no gerenciador de senhas, **nunca** nos repositórios).
-   - Substituir `age1REPLACE_WITH_HOMELAB_AGE_PUBLIC_KEY` no `.sops.yaml` dos 3 repositórios pela chave pública gerada.
-   - Criar os arquivos `secrets/*.sops.yaml` a partir dos `*.example.yaml` utilizando as credenciais preservadas em `.private-vault/` (atualizando senhas de API/MCP se desejado) e criptografar com `sops -e -i`.
+2. **Chave Mestra SOPS/Age e Padronização de Secrets (`root` + `ROOT_PASSWORD`):**
+   - Garantir `~/.config/sops/age/keys.txt` na estação de trabalho (backup seguro no gerenciador de senhas, **nunca** nos repositórios) e a respectiva chave pública no `.sops.yaml` dos 3 repositórios.
+   - Criar `secrets/*.sops.yaml` a partir dos `*.example.yaml` e criptografar com `sops -e -i`:
+     - **Usuário e senha unificados (`ROOT_USERNAME=root` + `ROOT_PASSWORD`)**: definir a mesma senha em `/opt/homelab-hub/.env` (Grafana + Authelia), `mediaserver-secrets.sops.yaml` (`arr-mcp` UI, `bazarr`, referência `qbittorrent` no `arr-mcp`) e `hermes-secrets.sops.yaml`.
+     - **Chaves arbitrárias (gerar novas aleatórias)**: `RADARR_API_KEY`, `SONARR_API_KEY`, `PROWLARR_API_KEY` e `BAZARR_API_KEY` (32 chars hex cada — injetadas nativamente por env var / `sync-auth`), `ARR_MCP_HERMES_TOKEN` (`amcp_<64 hex>` — idêntico entre `mediaserver` e `hermes`; o `arr-mcp` calcula `sha256:` automaticamente no startup) e `AUTHELIA_*` (64 chars hex).
+     - **Chaves externas (não arbitrárias)**: `CF_DNS_API_TOKEN` (Cloudflare), `PVE_METRICS_TOKEN_VALUE` (Proxmox) e `OPENAI_API_KEY` (OpenAI).
+     - **Chaves ligadas ao banco migrado (`appdata`)**: `JELLYFIN_API_KEY` e `SEERR_API_KEY` (reaproveitar os valores preservados em `.private-vault/` ou gerar novas chaves na UI após a restauração e atualizar `mediaserver-secrets.sops.yaml`).
 3. **Subir branches `main` (e tags `legacy-2026-11`) para o GitHub** nos repositórios `homelab-platform`, `homelab-mediaserver` e `homelab-hermes`.
 
 ## Passo 1 — Preparação do `nvme-secondary` e Mapeamentos no Proxmox (`pve01`)
@@ -44,6 +47,7 @@ Este roteiro executa a transição limpa para `VM 100 (homelab-hub)` + `VM 200 (
 2. Em `homelab-platform/infrastructure/ansible/`:
    - Preencher `inventory/hosts.yml` (gitignored) e os arquivos privados em `/opt/homelab-hub/.env` na `VM 100`.
    - Rodar `ansible-playbook -i inventory/hosts.yml playbooks/hub.yml`:
+     - O playbook gera `/srv/hub/authelia/users_database.yml` (`0600`) automaticamente para o usuário `root` a partir de `ROOT_PASSWORD` em `/opt/homelab-hub/.env` (caso ainda não exista) e copia `./authelia/configuration.yml` se ausente/preparado conforme `configuration.yml.example`.
      - Autenticar o Tailscale na `VM 100` (usando o mesmo Tailnet/hostname ou atualizando o IP Tailscale no DNS Cloudflare) e validar Traefik TLS wildcard `*.greis.dev.br`, Authelia e Grafana/Loki.
    - Rodar `ansible-playbook -i inventory/hosts.yml playbooks/k3s.yml`:
      - Conferir `/mnt/storage` (18 TB ext4 montado por UUID), `/mnt/transcode` (disco de scratch 48 GiB), `/dev/dri/renderD128`, `RequiresMountsFor` no `k3s.service`, e `flux-system` com a chave `sops-age`.
@@ -54,7 +58,9 @@ Este roteiro executa a transição limpa para `VM 100 (homelab-hub)` + `VM 200 (
    - `/mnt/storage/homeserver` (já contém `media/` e `torrents/` intactos com os hardlinks).
    - `/mnt/transcode/jellyfin` (UID/GID `1000:1000`).
 2. Fazer `flux bootstrap github` (ou aplicar `clusters/homelab`) para reconciliar `platform` e `spoke-mediaserver` / `spoke-hermes`.
-3. Aguardar criação dos PVCs `local-path` de `spoke-mediaserver`, escalar momentaneamente os deployments para `0` réplicas (`kubectl -n spoke-mediaserver scale deploy --all --replicas=0`), copiar os `appdata` preservados (`jellyfin`, `radarr`, `sonarr`, `prowlarr`, `bazarr`, `seerr`, `qbittorrent`) para os respectivos diretórios de PV garantindo `chown -R 1000:1000`, limpar `<BaseUrl>` no `network.xml` do Jellyfin (padronizando acesso direto em `/`) e ajustar URLs internas nos apps que ainda apontavam para `172.28.64.x` (para DNS K8s `http://radarr:7878/radarr`, etc.), restaurando `replicas=1` via `flux reconcile kustomization spoke-mediaserver --with-source`.
+3. Aguardar criação dos PVCs `local-path` de `spoke-mediaserver`, escalar momentaneamente os deployments para `0` réplicas (`kubectl -n spoke-mediaserver scale deploy --all --replicas=0`), copiar os `appdata` preservados (`jellyfin`, `radarr`, `sonarr`, `prowlarr`, `bazarr`, `seerr`, `qbittorrent`) para os respectivos diretórios de PV garantindo `chown -R 1000:1000`, limpar `<BaseUrl>` no `network.xml` do Jellyfin (padronizando acesso direto em `/`) e ajustar URLs internas nos apps que ainda apontavam para `172.28.64.x` (para DNS K8s `http://radarr:7878/radarr`, etc.), restaurando `replicas=1` via `flux reconcile kustomization spoke-mediaserver --with-source` e `flux reconcile kustomization spoke-mediaserver-secrets --with-source`.
+   - Conferir nos apps com banco próprio (`Jellyfin`, `Seerr`, `Radarr`, `Sonarr`, `Prowlarr`, `qBittorrent`) se o login `root` restaurado utiliza a mesma `ROOT_PASSWORD` padronizada; no `Bazarr` e no `arr-mcp` UI o `initContainer` já aplica `root` e as API keys automaticamente na subida.
+   - Caso não tenha reaproveitado `JELLYFIN_API_KEY` / `SEERR_API_KEY` do `.private-vault/`, gerar novas API keys em `Jellyfin Dashboard -> API Keys` e `Seerr Settings -> General`, atualizar `secrets/mediaserver-secrets.sops.yaml`, commitar e reconciliar `spoke-mediaserver-secrets`.
 4. Buildar/carregar a imagem limpa `homeserver-jellyfin-abyss:12.2-2f809171-r6` no `containerd` do K3s (`k3s ctr images import`) a partir de `homelab-mediaserver/docker/jellyfin-abyss/`.
 
 ## Passo 5 — Checklist de Aceite e Encerramento do Legado
