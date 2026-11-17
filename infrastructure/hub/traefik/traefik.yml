@@ -1,0 +1,59 @@
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+entryPoints:
+  websecure:
+    address: ":443"
+    http:
+      tls:
+        certResolver: cloudflare
+        domains:
+          - main: "greis.dev.br"
+            sans:
+              - "*.greis.dev.br"
+  lan-tv:
+    address: ":8096"
+
+certificatesResolvers:
+  cloudflare:
+    acme:
+      email: "guilhermejuizo2@gmail.com"
+      storage: "/etc/traefik/acme/acme.json"
+      dnsChallenge:
+        provider: cloudflare
+        delayBeforeCheck: 15
+        resolvers:
+          - "1.1.1.1:53"
+          - "1.0.0.1:53"
+
+providers:
+  file:
+    directory: "/etc/traefik/dynamic"
+    watch: true
+
+log:
+  level: INFO
+  format: json
+
+accessLog:
+  filePath: "/var/log/traefik/access.json"
+  format: json
+  fields:
+    defaultMode: keep
+    names:
+      RequestHost: keep
+      RequestMethod: keep
+      RequestPath: keep
+      DownstreamStatus: keep
+      Duration: keep
+    headers:
+      defaultMode: drop
+      names:
+        User-Agent: keep
+        X-Forwarded-For: keep
+        Authorization: redact
+        Cookie: redact
+        Set-Cookie: redact
+        X-Api-Key: redact
+        X-Emby-Token: redact

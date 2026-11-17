@@ -1,0 +1,208 @@
+name: homelab-hub
+
+services:
+  traefik:
+    image: traefik:v3.3
+    container_name: hub-traefik
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      CF_DNS_API_TOKEN: ${CF_DNS_API_TOKEN:?Set Cloudflare DNS-01 token}
+      K3S_NODE_IP: ${K3S_NODE_IP:-172.28.64.200}
+      PVE_HOST_IP: ${PVE_HOST_IP:-192.168.1.20}
+    ports:
+      - "443:443"
+      - "8096:8096"
+    volumes:
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro
+      - /srv/hub/traefik/acme:/etc/traefik/acme
+      - /srv/hub/traefik/logs:/var/log/traefik
+    networks:
+      - hub_net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  coredns:
+    image: coredns/coredns:1.12.0
+    container_name: hub-coredns
+    restart: unless-stopped
+    command: -conf /etc/coredns/Corefile
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+    volumes:
+      - ./coredns/Corefile:/etc/coredns/Corefile:ro
+      - ./coredns/db.greis.dev.br:/etc/coredns/db.greis.dev.br:ro
+    networks:
+      - hub_net
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  authelia:
+    image: authelia/authelia:4.38
+    container_name: hub-authelia
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      TZ: America/Sao_Paulo
+      AUTHELIA_JWT_SECRET: ${AUTHELIA_JWT_SECRET:?Set AUTHELIA_JWT_SECRET}
+      AUTHELIA_SESSION_SECRET: ${AUTHELIA_SESSION_SECRET:?Set AUTHELIA_SESSION_SECRET}
+      AUTHELIA_STORAGE_ENCRYPTION_KEY: ${AUTHELIA_STORAGE_ENCRYPTION_KEY:?Set AUTHELIA_STORAGE_ENCRYPTION_KEY}
+    volumes:
+      - ./authelia/configuration.yml:/config/configuration.yml:ro
+      - /srv/hub/authelia:/var/lib/authelia
+    networks:
+      - hub_net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  homepage:
+    image: ghcr.io/gethomepage/homepage:v0.10.9
+    container_name: hub-homepage
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      HOMEPAGE_ALLOWED_HOSTS: homelab.greis.dev.br
+    volumes:
+      - ./homepage:/app/config:ro
+    networks:
+      - hub_net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "2"
+
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    container_name: hub-prometheus
+    restart: unless-stopped
+    user: "65534:65534"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=14d
+      - --storage.tsdb.retention.size=4GB
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/rules:/etc/prometheus/rules:ro
+      - /srv/hub/prometheus:/prometheus
+    networks:
+      - hub_net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  pve-exporter:
+    image: prompve/prometheus-pve-exporter:3.5.0
+    container_name: hub-pve-exporter
+    restart: unless-stopped
+    environment:
+      PVE_USER: ${PVE_METRICS_USER:-prometheus@pve}
+      PVE_TOKEN_NAME: ${PVE_METRICS_TOKEN_NAME:-metrics}
+      PVE_TOKEN_VALUE: ${PVE_METRICS_TOKEN_VALUE:?Set PVE_METRICS_TOKEN_VALUE}
+      PVE_VERIFY_SSL: "false"
+    networks:
+      - hub_net
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  loki:
+    image: grafana/loki:3.4.2
+    container_name: hub-loki
+    restart: unless-stopped
+    user: "10001:10001"
+    command: -config.file=/etc/loki/loki-config.yml
+    ports:
+      - "172.28.64.100:3100:3100"
+    volumes:
+      - ./observability/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - /srv/hub/loki:/loki
+    networks:
+      - hub_net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "2"
+
+  promtail-hub:
+    image: grafana/promtail:3.4.2
+    container_name: hub-promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/promtail-hub.yml
+    volumes:
+      - ./observability/promtail-hub.yml:/etc/promtail/promtail-hub.yml:ro
+      - /srv/hub/traefik/logs:/var/log/traefik:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - hub_net
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    container_name: hub-alertmanager
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ./observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - /srv/hub/alertmanager:/alertmanager
+    networks:
+      - hub_net
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    container_name: hub-grafana
+    restart: unless-stopped
+    user: "472:472"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD}
+      GF_SERVER_ROOT_URL: https://grafana.greis.dev.br
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SECURITY_COOKIE_SECURE: "true"
+      GF_SECURITY_COOKIE_SAMESITE: strict
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - /srv/hub/grafana:/var/lib/grafana
+    networks:
+      - hub_net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  hub_net:
+    driver: bridge

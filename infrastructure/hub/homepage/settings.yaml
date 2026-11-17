@@ -1,0 +1,15 @@
+title: HomeServer Hub
+description: Portal central do ecossistema Hub & Spoke
+theme: dark
+color: slate
+headerStyle: clean
+layout:
+  Plataforma (Hub):
+    style: row
+    columns: 4
+  Spokes Ativos:
+    style: row
+    columns: 4
+  Spokes Planejados:
+    style: row
+    columns: 3

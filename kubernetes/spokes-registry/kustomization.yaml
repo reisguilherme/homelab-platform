@@ -1,0 +1,7 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - mediaserver.yaml
+  - hermes.yaml
+  # Ativar na Etapa 5.5 após validar o cutover do Mediaserver e Hermes:
+  # - ./vaultwarden

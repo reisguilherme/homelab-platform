@@ -1,0 +1,139 @@
+---
+- name: Configure VM 200 (homelab-k3s) with direct storage, iGPU, K3s, SOPS and FluxCD
+  hosts: k3s_nodes
+  become: true
+
+  tasks:
+    - name: Install runtime, filesystem, GPU, and telemetry packages
+      ansible.builtin.apt:
+        name:
+          - curl
+          - ca-certificates
+          - open-iscsi
+          - intel-media-va-driver-non-free
+          - vainfo
+          - prometheus-node-exporter
+          - unattended-upgrades
+        state: present
+        update_cache: true
+
+    - name: Ensure mount points exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "1000"
+        group: "1000"
+        mode: "0755"
+      loop:
+        - /mnt/storage
+        - /mnt/transcode
+
+    - name: Format dedicated transcode scratch disk if unformatted
+      community.general.filesystem:
+        fstype: ext4
+        dev: "{{ transcode_disk_device }}"
+        opts: "-L homelab-transcode"
+      when: transcode_disk_device is defined
+
+    - name: Mount 18 TB USB ext4 disk deterministically by UUID
+      ansible.posix.mount:
+        path: /mnt/storage
+        src: "UUID={{ media_hdd_uuid }}"
+        fstype: ext4
+        opts: "defaults,noatime,nofail,x-systemd.device-timeout=30s"
+        state: mounted
+
+    - name: Mount dedicated transcode scratch disk by label
+      ansible.posix.mount:
+        path: /mnt/transcode
+        src: "LABEL=homelab-transcode"
+        fstype: ext4
+        opts: "defaults,noatime,nofail,x-systemd.device-timeout=15s"
+        state: mounted
+
+    - name: Prepare Jellyfin scratch directory with UID/GID 1000
+      ansible.builtin.file:
+        path: /mnt/transcode/jellyfin
+        state: directory
+        owner: "1000"
+        group: "1000"
+        mode: "0755"
+
+    - name: Configure Intel QuickSync /dev/dri udev permissions
+      ansible.builtin.copy:
+        dest: /etc/udev/rules.d/60-intel-dri.rules
+        mode: "0644"
+        content: |
+          SUBSYSTEM=="drm", KERNEL=="renderD*", GROUP="render", MODE="0660"
+          SUBSYSTEM=="drm", KERNEL=="card*", GROUP="video", MODE="0660"
+
+    - name: Install systemd drop-in enforcing RequiresMountsFor before K3s starts
+      ansible.builtin.file:
+        path: /etc/systemd/system/k3s.service.d
+        state: directory
+        mode: "0755"
+
+    - name: Write k3s mount dependency drop-in
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/k3s.service.d/10-storage-mounts.conf
+        mode: "0644"
+        content: |
+          [Unit]
+          RequiresMountsFor=/mnt/storage /mnt/transcode
+      notify: Reload systemd
+
+    - name: Install K3s single-node server (keep Traefik enabled for internal Hub forwarding)
+      ansible.builtin.shell: |
+        set -euo pipefail
+        if ! command -v k3s >/dev/null 2>&1; then
+          curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="{{ k3s_version }}" sh -s - server \
+            --write-kubeconfig-mode 0644 \
+            --tls-san "{{ ansible_host }}"
+        fi
+      args:
+        executable: /bin/bash
+        creates: /usr/local/bin/k3s
+
+    - name: Install Flux CLI
+      ansible.builtin.shell: |
+        set -euo pipefail
+        if ! command -v flux >/dev/null 2>&1; then
+          curl -fsSL https://fluxcd.io/install.sh | bash
+        fi
+      args:
+        executable: /bin/bash
+        creates: /usr/local/bin/flux
+
+    - name: Create flux-system namespace
+      ansible.builtin.command:
+        cmd: k3s kubectl create namespace flux-system --dry-run=client -o yaml | k3s kubectl apply -f -
+      changed_when: false
+
+    - name: Provision SOPS Age private decryption key secret in flux-system
+      ansible.builtin.shell: |
+        set -euo pipefail
+        k3s kubectl create secret generic sops-age \
+          --namespace=flux-system \
+          --from-file=age.agekey=/dev/stdin \
+          --dry-run=client -o yaml | k3s kubectl apply -f -
+      args:
+        stdin: "{{ lookup('file', sops_age_key_file) }}"
+      no_log: true
+
+    - name: Bootstrap FluxCD GitOps from homelab-platform main branch (requires GITHUB_TOKEN in env)
+      ansible.builtin.command:
+        cmd: >
+          flux bootstrap github
+          --owner={{ flux_repo_owner }}
+          --repository={{ flux_repo_name }}
+          --branch={{ flux_repo_branch }}
+          --path={{ flux_cluster_path }}
+          --personal
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      when: lookup('env', 'GITHUB_TOKEN') | length > 0
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true

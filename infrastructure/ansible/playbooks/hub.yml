@@ -1,0 +1,98 @@
+---
+- name: Configure VM 100 (homelab-hub)
+  hosts: hub
+  become: true
+
+  tasks:
+    - name: Install base packages and Docker prerequisites
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+          - jq
+          - prometheus-node-exporter
+          - unattended-upgrades
+        state: present
+        update_cache: true
+
+    - name: Disable systemd-resolved stub listener so CoreDNS can bind port 53
+      ansible.builtin.copy:
+        dest: /etc/systemd/resolved.conf.d/99-coredns.conf
+        mode: "0644"
+        content: |
+          [Resolve]
+          DNSStubListener=no
+      notify: Restart systemd-resolved
+
+    - name: Install Docker Engine using official convenience repo
+      ansible.builtin.shell: |
+        set -euo pipefail
+        if ! command -v docker >/dev/null 2>&1; then
+          install -m 0755 -d /etc/apt/keyrings
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+          chmod a+r /etc/apt/keyrings/docker.asc
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list
+          apt-get update
+          apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+        fi
+      args:
+        executable: /bin/bash
+        creates: /usr/bin/docker
+
+    - name: Install Tailscale client
+      ansible.builtin.shell: |
+        set -euo pipefail
+        if ! command -v tailscale >/dev/null 2>&1; then
+          curl -fsSL https://tailscale.com/install.sh | sh
+        fi
+      args:
+        executable: /bin/bash
+        creates: /usr/bin/tailscale
+
+    - name: Ensure /opt/homelab-hub and persistent data directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - /opt/homelab-hub
+        - /srv/hub/traefik/acme
+        - /srv/hub/traefik/logs
+        - /srv/hub/authelia
+        - /srv/hub/prometheus
+        - /srv/hub/grafana
+        - /srv/hub/loki
+        - /srv/hub/alertmanager
+
+    - name: Synchronize declarative Hub Compose stack
+      ansible.posix.synchronize:
+        src: ../../hub/
+        dest: /opt/homelab-hub/
+        rsync_opts:
+          - "--exclude=.env"
+
+    - name: Ensure Traefik acme.json exists with strict 0600 permissions
+      ansible.builtin.file:
+        path: /srv/hub/traefik/acme/acme.json
+        state: touch
+        mode: "0600"
+        modification_time: preserve
+        access_time: preserve
+
+    - name: Check whether private /opt/homelab-hub/.env is provisioned
+      ansible.builtin.stat:
+        path: /opt/homelab-hub/.env
+      register: hub_env
+
+    - name: Start Hub Docker Compose stack when .env is present
+      ansible.builtin.command:
+        cmd: docker compose up -d --remove-orphans
+        chdir: /opt/homelab-hub
+      when: hub_env.stat.exists
+
+  handlers:
+    - name: Restart systemd-resolved
+      ansible.builtin.systemd:
+        name: systemd-resolved
+        state: restarted

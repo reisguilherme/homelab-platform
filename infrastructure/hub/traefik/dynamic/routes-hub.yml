@@ -1,0 +1,55 @@
+http:
+  routers:
+    auth-portal:
+      rule: "Host(`auth.greis.dev.br`)"
+      entryPoints: ["websecure"]
+      middlewares: ["private-network-only", "security-headers"]
+      service: authelia-svc
+      tls: {}
+
+    hub-homepage:
+      rule: "Host(`homelab.greis.dev.br`)"
+      entryPoints: ["websecure"]
+      middlewares: ["private-network-only", "sso-auth", "security-headers"]
+      service: homepage-svc
+      tls: {}
+
+    hub-grafana:
+      rule: "Host(`grafana.greis.dev.br`)"
+      entryPoints: ["websecure"]
+      middlewares: ["private-network-only", "sso-auth", "security-headers"]
+      service: grafana-svc
+      tls: {}
+
+    hub-proxmox:
+      rule: "Host(`proxmox.greis.dev.br`)"
+      entryPoints: ["websecure"]
+      middlewares: ["private-network-only", "sso-auth", "security-headers"]
+      service: proxmox-svc
+      tls: {}
+
+  services:
+    authelia-svc:
+      loadBalancer:
+        servers:
+          - url: "http://authelia:9091"
+
+    homepage-svc:
+      loadBalancer:
+        servers:
+          - url: "http://homepage:3000"
+
+    grafana-svc:
+      loadBalancer:
+        servers:
+          - url: "http://grafana:3000"
+
+    proxmox-svc:
+      loadBalancer:
+        serversTransport: proxmox-insecure
+        servers:
+          - url: "https://{{ env \"PVE_HOST_IP\" }}:8006"
+
+  serversTransports:
+    proxmox-insecure:
+      insecureSkipVerify: true

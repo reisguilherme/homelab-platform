@@ -1,0 +1,11 @@
+greis.dev.br:53 {
+    file /etc/coredns/db.greis.dev.br
+    log
+    errors
+}
+
+.:53 {
+    forward . 1.1.1.1 9.9.9.9
+    cache 300
+    errors
+}

@@ -1,0 +1,60 @@
+# Copiar para configuration.yml no servidor e ajustar usuarios em users_database.yml
+theme: dark
+server:
+  address: "tcp://0.0.0.0:9091"
+
+log:
+  level: info
+  format: json
+
+totp:
+  issuer: "HomeServer"
+  period: 30
+  skew: 1
+
+webauthn:
+  disable: false
+  display_name: "HomeServer SSO"
+  attestation_conveyance_preference: "indirect"
+  timeout: "60 seconds"
+
+authentication_backend:
+  file:
+    path: /var/lib/authelia/users_database.yml
+    password:
+      algorithm: argon2
+      argon2:
+        variant: argon2id
+        iterations: 3
+        memory: 65536
+        parallelism: 4
+        key_length: 32
+        salt_length: 16
+
+session:
+  name: authelia_session
+  same_site: lax
+  inactivity: 1h
+  expiration: 12h
+  remember_me: 7d
+  cookies:
+    - domain: greis.dev.br
+      authelia_url: https://auth.greis.dev.br
+      default_redirection_url: https://homelab.greis.dev.br
+
+storage:
+  local:
+    path: /var/lib/authelia/db.sqlite3
+
+notifier:
+  filesystem:
+    filename: /var/lib/authelia/notification.txt
+
+access_control:
+  default_policy: deny
+  rules:
+    - domain:
+        - "*.greis.dev.br"
+      policy: two_factor
+      subject:
+        - "group:admins"

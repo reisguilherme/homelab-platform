@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: spoke-example
+  labels:
+    app.kubernetes.io/part-of: spoke-example
+    pod-security.kubernetes.io/enforce: baseline
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: spoke-example-quota
+  namespace: spoke-example
+spec:
+  hard:
+    requests.memory: 256Mi
+    limits.memory: 512Mi
+    persistentvolumeclaims: "4"

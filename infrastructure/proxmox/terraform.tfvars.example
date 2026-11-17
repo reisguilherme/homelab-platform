@@ -1,0 +1,10 @@
+pve_endpoint            = "https://192.168.1.20:8006/"
+pve_api_token           = "root@pam!opentofu=REPLACE_WITH_PRIVATE_TOKEN"
+pve_tls_insecure        = false
+pve_node                = "pve01"
+primary_vm_datastore    = "nvme-secondary"
+backup_datastore        = "nvme-secondary"
+ubuntu_cloud_image_id   = "local:iso/noble-server-cloudimg-amd64.img"
+operator_ssh_public_key = "ssh-ed25519 AAAA_REPLACE_WITH_PUBLIC_KEY operator@homeserver"
+media_usb_mapping_id    = "media-hdd-18tb"
+igpu_pci_mapping_id     = "intel-igpu-qsv"

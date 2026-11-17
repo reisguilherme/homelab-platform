@@ -1,0 +1,26 @@
+groups:
+  - name: homelab-storage
+    rules:
+      - alert: StorageDiskAlmostFullWarning
+        expr: (1 - (node_filesystem_avail_bytes{mountpoint=~"/|/mnt/storage|/mnt/transcode"} / node_filesystem_size_bytes)) > 0.85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disco {{ $labels.mountpoint }} acima de 85% em {{ $labels.instance }}"
+
+      - alert: StorageDiskCritical
+        expr: (1 - (node_filesystem_avail_bytes{mountpoint=~"/|/mnt/storage|/mnt/transcode"} / node_filesystem_size_bytes)) > 0.92
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Disco {{ $labels.mountpoint }} acima de 92% em {{ $labels.instance }}"
+
+      - alert: MediaStorageUnmounted
+        expr: absent(node_filesystem_size_bytes{mountpoint="/mnt/storage"}) == 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "HD de 18 TB (/mnt/storage) desmontado na VM K3s"

@@ -1,0 +1,42 @@
+# Encaminhamento genérico do Hub para o Ingress interno do cluster K3s (VM 200).
+# O Hub não conhece portas internas nem lógica dos Spokes; apenas classifica
+# a fronteira de acesso (external-ready vs. internal-only com SSO).
+
+http:
+  routers:
+    # Rotas preparadas para eventual exposição pública futura (ex.: túnel Pangolin/VPS)
+    spokes-external-ready:
+      rule: "Host(`jellyfin.greis.dev.br`) || Host(`overseer.greis.dev.br`)"
+      entryPoints: ["websecure"]
+      middlewares: ["private-network-only", "security-headers"]
+      service: k3s-ingress
+      tls: {}
+
+    # Exceção LAN HTTP para Smart TVs da casa (sem prefixo)
+    spokes-lan-tv:
+      rule: "PathPrefix(`/`)"
+      entryPoints: ["lan-tv"]
+      middlewares: ["private-network-only"]
+      service: k3s-lan-tv
+
+    # Demais Spokes internos (protegidos por rede privada + Authelia SSO ForwardAuth)
+    spokes-internal-sso:
+      rule: "HostRegexp(`^[a-z0-9-]+\\.greis\\.dev\\.br$`)"
+      priority: 10
+      entryPoints: ["websecure"]
+      middlewares: ["private-network-only", "sso-auth", "security-headers"]
+      service: k3s-ingress
+      tls: {}
+
+  services:
+    k3s-ingress:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: "http://{{ env \"K3S_NODE_IP\" }}:80"
+
+    k3s-lan-tv:
+      loadBalancer:
+        passHostHeader: true
+        servers:
+          - url: "http://{{ env \"K3S_NODE_IP\" }}:30096"

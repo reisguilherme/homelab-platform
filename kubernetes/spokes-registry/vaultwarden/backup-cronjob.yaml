@@ -1,0 +1,48 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: vaultwarden-sqlite-backup
+  namespace: spoke-vaultwarden
+spec:
+  schedule: "30 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: sqlite-backup
+              image: alpine:3.21
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -eu
+                  apk add --no-cache sqlite >/dev/null
+                  STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+                  if [ -f /data/db.sqlite3 ]; then
+                    sqlite3 /data/db.sqlite3 ".backup '/backups/db-${STAMP}.sqlite3'"
+                  fi
+                  find /backups -name 'db-*.sqlite3' -mtime +14 -delete
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 64Mi
+              volumeMounts:
+                - name: data
+                  mountPath: /data
+                  readOnly: true
+                - name: backups
+                  mountPath: /backups
+          volumes:
+            - name: data
+              persistentVolumeClaim:
+                claimName: vaultwarden-data
+            - name: backups
+              persistentVolumeClaim:
+                claimName: vaultwarden-backups

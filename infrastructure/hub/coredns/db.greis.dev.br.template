@@ -1,0 +1,6 @@
+; Split-DNS interno para greis.dev.br (copiar para db.greis.dev.br ajustando o IP Tailscale/LAN do Hub)
+$ORIGIN greis.dev.br.
+@       300 IN SOA ns1.greis.dev.br. hostmaster.greis.dev.br. 2026111701 7200 3600 1209600 300
+@       300 IN NS  ns1.greis.dev.br.
+ns1     300 IN A   172.28.64.100
+*       300 IN A   100.109.244.123
