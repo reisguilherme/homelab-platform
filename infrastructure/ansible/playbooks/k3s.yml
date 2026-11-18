@@ -114,15 +114,15 @@
         state: started
         daemon_reload: true
 
-    - name: Install Flux CLI
+    - name: Install pinned Flux CLI compatible with K3s version
       ansible.builtin.shell: |
         set -euo pipefail
-        if ! command -v flux >/dev/null 2>&1; then
-          curl -fsSL https://fluxcd.io/install.sh | bash
+        WANT="{{ flux_version | default('2.5.1') }}"
+        if ! command -v flux >/dev/null 2>&1 || ! flux --version | grep -Fq "${WANT}"; then
+          curl -fsSL https://fluxcd.io/install.sh | FLUX_VERSION="${WANT}" bash
         fi
       args:
         executable: /bin/bash
-        creates: /usr/local/bin/flux
 
     - name: Create flux-system namespace
       ansible.builtin.shell: |
