@@ -8,15 +8,10 @@ log:
   format: json
 
 totp:
-  issuer: "HomeServer"
-  period: 30
-  skew: 1
+  disable: true
 
 webauthn:
-  disable: false
-  display_name: "HomeServer SSO"
-  attestation_conveyance_preference: "indirect"
-  timeout: "60 seconds"
+  disable: true
 
 authentication_backend:
   file:
@@ -55,6 +50,6 @@ access_control:
   rules:
     - domain:
         - "*.greis.dev.br"
-      policy: two_factor
+      policy: one_factor
       subject:
         - "group:admins"

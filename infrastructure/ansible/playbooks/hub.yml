@@ -99,16 +99,22 @@
         rsync_opts:
           - "--exclude=.env"
 
-    - name: Initialize Hub config files from declarative templates when absent
+    - name: Sync declarative Authelia configuration
       ansible.builtin.copy:
-        src: "{{ item.src }}"
-        dest: "{{ item.dest }}"
+        src: /opt/homelab-hub/authelia/configuration.yml.example
+        dest: /opt/homelab-hub/authelia/configuration.yml
+        remote_src: true
+        force: true
+        mode: "0644"
+      register: authelia_cfg_copy
+
+    - name: Initialize CoreDNS zone file from template when absent
+      ansible.builtin.copy:
+        src: /opt/homelab-hub/coredns/db.greis.dev.br.template
+        dest: /opt/homelab-hub/coredns/db.greis.dev.br
         remote_src: true
         force: false
         mode: "0644"
-      loop:
-        - { src: /opt/homelab-hub/authelia/configuration.yml.example, dest: /opt/homelab-hub/authelia/configuration.yml }
-        - { src: /opt/homelab-hub/coredns/db.greis.dev.br.template, dest: /opt/homelab-hub/coredns/db.greis.dev.br }
 
     - name: Ensure Traefik acme.json exists with strict 0600 permissions
       ansible.builtin.file:
@@ -163,6 +169,14 @@
         cmd: docker compose up -d --remove-orphans
         chdir: /opt/homelab-hub
       when: hub_env.stat.exists
+
+    - name: Recreate hub-authelia when declarative configuration changes
+      ansible.builtin.command:
+        cmd: docker compose up -d --force-recreate authelia
+        chdir: /opt/homelab-hub
+      when:
+        - hub_env.stat.exists
+        - authelia_cfg_copy.changed
 
   handlers:
     - name: Restart systemd-resolved
