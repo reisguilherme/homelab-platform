@@ -50,7 +50,8 @@ resource "proxmox_virtual_environment_vm" "hub" {
   }
 
   initialization {
-    datastore_id = var.primary_vm_datastore
+    datastore_id        = var.primary_vm_datastore
+    vendor_data_file_id = var.cloudinit_vendor_file_id
     ip_config {
       ipv4 {
         address = var.hub_ip_cidr
@@ -127,12 +128,15 @@ resource "proxmox_virtual_environment_vm" "k3s" {
     usb3    = true
   }
 
-  # Intel UHD QuickSync iGPU passthrough
-  hostpci {
-    device  = "hostpci0"
-    mapping = var.igpu_pci_mapping_id
-    pcie    = true
-    rombar  = true
+  # Intel UHD QuickSync iGPU passthrough (activate after host VFIO blacklist + reboot)
+  dynamic "hostpci" {
+    for_each = var.enable_igpu_passthrough ? [1] : []
+    content {
+      device  = "hostpci0"
+      mapping = var.igpu_pci_mapping_id
+      pcie    = true
+      rombar  = true
+    }
   }
 
   network_device {
@@ -142,7 +146,8 @@ resource "proxmox_virtual_environment_vm" "k3s" {
   }
 
   initialization {
-    datastore_id = var.primary_vm_datastore
+    datastore_id        = var.primary_vm_datastore
+    vendor_data_file_id = var.cloudinit_vendor_file_id
     ip_config {
       ipv4 {
         address = var.k3s_ip_cidr

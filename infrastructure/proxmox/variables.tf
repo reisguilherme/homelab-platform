@@ -90,3 +90,15 @@ variable "igpu_pci_mapping_id" {
   type        = string
   default     = "intel-igpu-qsv"
 }
+
+variable "enable_igpu_passthrough" {
+  description = "Attach Intel UHD iGPU PCI passthrough to VM 200 (enable after host VFIO blacklist + reboot)"
+  type        = bool
+  default     = false
+}
+
+variable "cloudinit_vendor_file_id" {
+  description = "Cloud-init vendor snippet installing and starting qemu-guest-agent"
+  type        = string
+  default     = "local:snippets/homelab-vendor.yaml"
+}

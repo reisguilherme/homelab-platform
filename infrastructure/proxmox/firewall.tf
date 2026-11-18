@@ -4,10 +4,10 @@ locals {
 }
 
 resource "proxmox_virtual_environment_cluster_firewall" "cluster" {
-  enabled       = true
-  input_policy  = "DROP"
-  output_policy = "ACCEPT"
-  forward_policy = "DROP"
+  enabled        = true
+  input_policy   = "DROP"
+  output_policy  = "ACCEPT"
+  forward_policy = "ACCEPT"
 
   log_ratelimit {
     enabled = true
@@ -43,6 +43,16 @@ resource "proxmox_virtual_environment_firewall_rules" "host" {
       dport   = "8096"
       enabled = true
     }
+  }
+
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    comment = "Allow Hub pve-exporter and Traefik proxy to Proxmox API"
+    source  = local.hub_ip
+    proto   = "tcp"
+    dport   = "8006"
+    enabled = true
   }
 
   depends_on = [proxmox_virtual_environment_cluster_firewall.cluster]
