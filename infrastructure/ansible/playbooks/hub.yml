@@ -18,6 +18,12 @@
         state: present
         update_cache: true
 
+    - name: Ensure /etc/systemd/resolved.conf.d exists
+      ansible.builtin.file:
+        path: /etc/systemd/resolved.conf.d
+        state: directory
+        mode: "0755"
+
     - name: Disable systemd-resolved stub listener so CoreDNS can bind port 53
       ansible.builtin.copy:
         dest: /etc/systemd/resolved.conf.d/99-coredns.conf
@@ -26,6 +32,13 @@
           [Resolve]
           DNSStubListener=no
       notify: Restart systemd-resolved
+
+    - name: Point /etc/resolv.conf to systemd-resolved upstream resolv.conf instead of stub 127.0.0.53
+      ansible.builtin.file:
+        src: /run/systemd/resolve/resolv.conf
+        dest: /etc/resolv.conf
+        state: link
+        force: true
 
     - name: Install Docker Engine using official convenience repo
       ansible.builtin.shell: |
@@ -104,6 +117,8 @@
         mode: "0600"
         modification_time: preserve
         access_time: preserve
+
+    - ansible.builtin.meta: flush_handlers
 
     - name: Check whether private /opt/homelab-hub/.env is provisioned
       ansible.builtin.stat:
