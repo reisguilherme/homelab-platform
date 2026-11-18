@@ -33,7 +33,14 @@
       community.general.filesystem:
         fstype: ext4
         dev: "{{ transcode_disk_device }}"
-        opts: "-L homelab-transcode"
+        opts: "-L jf-transcode"
+      when: transcode_disk_device is defined
+
+    - name: Read transcode scratch disk UUID
+      ansible.builtin.command:
+        cmd: "blkid -s UUID -o value {{ transcode_disk_device }}"
+      register: transcode_disk_uuid
+      changed_when: false
       when: transcode_disk_device is defined
 
     - name: Mount 18 TB USB ext4 disk deterministically by UUID
@@ -44,13 +51,15 @@
         opts: "defaults,noatime,nofail,x-systemd.device-timeout=30s"
         state: mounted
 
-    - name: Mount dedicated transcode scratch disk by label
+    - name: Mount dedicated transcode scratch disk deterministically by UUID
       ansible.posix.mount:
         path: /mnt/transcode
-        src: "LABEL=homelab-transcode"
+        src: "UUID={{ transcode_disk_uuid.stdout | trim }}"
         fstype: ext4
         opts: "defaults,noatime,nofail,x-systemd.device-timeout=15s"
         state: mounted
+      when: transcode_disk_device is defined
+      notify: Reload systemd
 
     - name: Prepare Jellyfin scratch directory with UID/GID 1000
       ansible.builtin.file:
@@ -83,6 +92,8 @@
           RequiresMountsFor=/mnt/storage /mnt/transcode
       notify: Reload systemd
 
+    - ansible.builtin.meta: flush_handlers
+
     - name: Install K3s single-node server (keep Traefik enabled for internal Hub forwarding)
       ansible.builtin.shell: |
         set -euo pipefail
@@ -94,6 +105,13 @@
       args:
         executable: /bin/bash
         creates: /usr/local/bin/k3s
+
+    - name: Ensure K3s service is enabled and running
+      ansible.builtin.systemd:
+        name: k3s
+        enabled: true
+        state: started
+        daemon_reload: true
 
     - name: Install Flux CLI
       ansible.builtin.shell: |
