@@ -4,10 +4,10 @@ locals {
 }
 
 resource "proxmox_virtual_environment_cluster_firewall" "cluster" {
-  enabled        = true
-  input_policy   = "DROP"
-  output_policy  = "ACCEPT"
-  forward_policy = "ACCEPT"
+  enabled       = true
+  ebtables      = true
+  input_policy  = "DROP"
+  output_policy = "ACCEPT"
 
   log_ratelimit {
     enabled = true
