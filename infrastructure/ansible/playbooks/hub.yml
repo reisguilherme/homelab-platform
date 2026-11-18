@@ -11,6 +11,7 @@
           - curl
           - gnupg
           - jq
+          - rsync
           - prometheus-node-exporter
           - unattended-upgrades
         state: present
@@ -65,12 +66,35 @@
         - /srv/hub/loki
         - /srv/hub/alertmanager
 
+    - name: Set non-root ownership on Hub observability data directories
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ item.uid }}"
+        group: "{{ item.gid }}"
+        mode: "0755"
+      loop:
+        - { path: /srv/hub/prometheus, uid: "65534", gid: "65534" }
+        - { path: /srv/hub/grafana, uid: "472", gid: "472" }
+        - { path: /srv/hub/loki, uid: "10001", gid: "10001" }
+
     - name: Synchronize declarative Hub Compose stack
       ansible.posix.synchronize:
         src: ../../hub/
         dest: /opt/homelab-hub/
         rsync_opts:
           - "--exclude=.env"
+
+    - name: Initialize Hub config files from declarative templates when absent
+      ansible.builtin.copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        remote_src: true
+        force: false
+        mode: "0644"
+      loop:
+        - { src: /opt/homelab-hub/authelia/configuration.yml.example, dest: /opt/homelab-hub/authelia/configuration.yml }
+        - { src: /opt/homelab-hub/coredns/db.greis.dev.br.template, dest: /opt/homelab-hub/coredns/db.greis.dev.br }
 
     - name: Ensure Traefik acme.json exists with strict 0600 permissions
       ansible.builtin.file:

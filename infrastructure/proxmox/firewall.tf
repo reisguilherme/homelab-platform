@@ -96,10 +96,19 @@ resource "proxmox_virtual_environment_firewall_rules" "hub" {
   rule {
     type    = "in"
     action  = "ACCEPT"
-    comment = "K3s Promtail logs (Loki 3100) and Split-DNS (53) from VM 200"
+    comment = "HTTPS ingress to Hub Traefik"
+    proto   = "tcp"
+    dport   = "443"
+    enabled = true
+  }
+
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    comment = "K3s Promtail logs (Loki 3100), Prometheus (9090), and Split-DNS (53) from VM 200"
     source  = local.k3s_ip
     proto   = "tcp"
-    dport   = "53,3100"
+    dport   = "53,3100,9090"
     enabled = true
   }
 

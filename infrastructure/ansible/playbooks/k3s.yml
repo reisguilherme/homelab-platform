@@ -133,6 +133,26 @@
         KUBECONFIG: /etc/rancher/k3s/k3s.yaml
       when: lookup('env', 'GITHUB_TOKEN') | length > 0
 
+    - name: Install Flux controllers without PAT for public GitOps repositories
+      ansible.builtin.shell: |
+        set -euo pipefail
+        if ! k3s kubectl -n flux-system get deploy source-controller >/dev/null 2>&1; then
+          flux check --pre
+          flux install
+        fi
+      args:
+        executable: /bin/bash
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      when: lookup('env', 'GITHUB_TOKEN') | length == 0
+
+    - name: Apply Flux cluster root kustomization when bootstrapping without PAT
+      ansible.builtin.command:
+        cmd: k3s kubectl apply -k https://github.com/{{ flux_repo_owner }}/{{ flux_repo_name }}//{{ flux_cluster_path }}?ref={{ flux_repo_branch }}
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      when: lookup('env', 'GITHUB_TOKEN') | length == 0
+
   handlers:
     - name: Reload systemd
       ansible.builtin.systemd:

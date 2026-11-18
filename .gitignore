@@ -21,6 +21,9 @@ age.key
 *.tfstate
 *.tfstate.*
 tfplan
+*.tfvars
+!*.tfvars.example
+infrastructure/ansible/inventory/hosts.yml
 .venv/
 __pycache__/
 *.pyc
