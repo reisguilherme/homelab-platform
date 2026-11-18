@@ -1,0 +1,27 @@
+#cloud-config
+{
+  "ssh_pwauth": false,
+  "package_update": true,
+  "packages": [
+    "qemu-guest-agent"
+  ],
+  "write_files": [
+    {
+      "path": "/etc/systemd/timesyncd.conf.d/50-homelab.conf",
+      "permissions": "0644",
+      "content": "[Time]\nNTP=162.159.200.1\nFallbackNTP=\n"
+    }
+  ],
+  "runcmd": [
+    [
+      "systemctl",
+      "start",
+      "qemu-guest-agent"
+    ],
+    [
+      "systemctl",
+      "restart",
+      "systemd-timesyncd"
+    ]
+  ]
+}

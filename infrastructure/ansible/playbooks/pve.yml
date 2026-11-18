@@ -1,4 +1,28 @@
 ---
+- name: Provision the cloud-init vendor data used by the Hub and K3s VMs
+  hosts: pve
+  become: true
+  tags: [cloudinit]
+
+  tasks:
+    - name: Locate the vendor snippet on Proxmox local storage
+      ansible.builtin.command: pvesm path local:snippets/homelab-vendor.yaml
+      register: vendor_snippet
+      changed_when: false
+      check_mode: false
+
+    - name: Ensure the Proxmox snippets directory exists
+      ansible.builtin.file:
+        path: "{{ vendor_snippet.stdout | trim | dirname }}"
+        state: directory
+        mode: '0755'
+
+    - name: Install the shared VM cloud-init vendor data
+      ansible.builtin.copy:
+        src: homelab-vendor.yaml
+        dest: "{{ vendor_snippet.stdout | trim }}"
+        mode: '0644'
+
 - name: Reserve the Intel iGPU on pve01 for VM 200
   hosts: pve
   become: true
