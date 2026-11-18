@@ -21,15 +21,21 @@ spec:
       containers:
         - name: prometheus-mcp
           image: ghcr.io/pab1it0/prometheus-mcp-server:1.1.0
+          command:
+            - /app/.venv/bin/python
+            - -c
+            - |
+              import sys
+              from prometheus_mcp_server.main import setup_environment
+              from prometheus_mcp_server.server import mcp
+              if not setup_environment():
+                  sys.exit(1)
+              mcp.settings.host = "0.0.0.0"
+              mcp.settings.port = 8080
+              mcp.run(transport="streamable-http")
           env:
             - name: PROMETHEUS_URL
               value: "http://172.28.64.100:9090"
-            - name: PROMETHEUS_MCP_TRANSPORT
-              value: "streamable-http"
-            - name: PROMETHEUS_MCP_BIND_HOST
-              value: "0.0.0.0"
-            - name: PROMETHEUS_MCP_BIND_PORT
-              value: "8080"
           ports:
             - name: mcp
               containerPort: 8080
@@ -54,6 +60,14 @@ spec:
               port: 8080
             initialDelaySeconds: 5
             periodSeconds: 15
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Mi
 ---
 apiVersion: v1
 kind: Service

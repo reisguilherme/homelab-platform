@@ -4,4 +4,4 @@ metadata:
   name: platform-observability
   labels:
     app.kubernetes.io/part-of: homelab-platform
-    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce: privileged
