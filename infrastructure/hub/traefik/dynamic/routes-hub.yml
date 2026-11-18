@@ -48,7 +48,7 @@ http:
       loadBalancer:
         serversTransport: proxmox-insecure
         servers:
-          - url: "https://{{ env \"PVE_HOST_IP\" }}:8006"
+          - url: 'https://{{ env "PVE_HOST_IP" }}:8006'
 
   serversTransports:
     proxmox-insecure:

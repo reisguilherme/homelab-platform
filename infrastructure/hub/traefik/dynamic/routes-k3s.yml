@@ -33,10 +33,10 @@ http:
       loadBalancer:
         passHostHeader: true
         servers:
-          - url: "http://{{ env \"K3S_NODE_IP\" }}:80"
+          - url: 'http://{{ env "K3S_NODE_IP" }}:80'
 
     k3s-lan-tv:
       loadBalancer:
         passHostHeader: true
         servers:
-          - url: "http://{{ env \"K3S_NODE_IP\" }}:30096"
+          - url: 'http://{{ env "K3S_NODE_IP" }}:30096'

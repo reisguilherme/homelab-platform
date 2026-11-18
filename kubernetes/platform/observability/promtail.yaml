@@ -79,6 +79,11 @@ spec:
           image: grafana/promtail:3.4.2
           args:
             - -config.file=/etc/promtail/promtail.yaml
+          env:
+            - name: HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
           resources:
             requests:
               cpu: 25m
