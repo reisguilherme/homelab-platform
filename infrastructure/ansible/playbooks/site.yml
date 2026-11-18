@@ -1,4 +1,7 @@
 ---
+- name: Configure Proxmox VE host networking
+  ansible.builtin.import_playbook: pve.yml
+
 - name: Provision Hub VM (homelab-hub)
   ansible.builtin.import_playbook: hub.yml
 

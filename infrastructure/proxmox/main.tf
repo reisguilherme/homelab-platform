@@ -18,6 +18,7 @@ resource "proxmox_virtual_environment_vm" "hub" {
 
   agent {
     enabled = true
+    timeout = "2m"
   }
 
   cpu {
@@ -85,6 +86,7 @@ resource "proxmox_virtual_environment_vm" "k3s" {
 
   agent {
     enabled = true
+    timeout = "2m"
   }
 
   cpu {
