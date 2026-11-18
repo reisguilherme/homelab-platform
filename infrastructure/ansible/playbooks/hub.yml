@@ -75,6 +75,7 @@
         - /srv/hub/traefik/acme
         - /srv/hub/traefik/logs
         - /srv/hub/authelia
+        - /srv/hub/homepage
         - /srv/hub/prometheus
         - /srv/hub/grafana
         - /srv/hub/loki
@@ -98,6 +99,18 @@
         dest: /opt/homelab-hub/
         rsync_opts:
           - "--exclude=.env"
+
+    - name: Sync declarative Homepage config files into writable /srv/hub/homepage
+      ansible.builtin.copy:
+        src: "/opt/homelab-hub/homepage/{{ item }}"
+        dest: "/srv/hub/homepage/{{ item }}"
+        remote_src: true
+        force: true
+        mode: "0644"
+      loop:
+        - services.yaml
+        - settings.yaml
+        - widgets.yaml
 
     - name: Sync declarative Authelia configuration
       ansible.builtin.copy:
