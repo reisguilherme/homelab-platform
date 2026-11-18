@@ -106,9 +106,9 @@ resource "proxmox_virtual_environment_firewall_rules" "hub" {
   rule {
     type    = "in"
     action  = "ACCEPT"
-    comment = "HTTPS ingress to Hub Traefik"
+    comment = "HTTP/HTTPS ingress to Hub Traefik"
     proto   = "tcp"
-    dport   = "443"
+    dport   = "80,443"
     enabled = true
   }
 
