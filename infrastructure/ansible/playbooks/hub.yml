@@ -11,6 +11,7 @@
           - curl
           - gnupg
           - jq
+          - qemu-guest-agent
           - rsync
           - prometheus-node-exporter
           - unattended-upgrades

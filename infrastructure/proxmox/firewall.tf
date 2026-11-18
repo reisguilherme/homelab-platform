@@ -188,3 +188,27 @@ resource "proxmox_virtual_environment_firewall_rules" "k3s" {
     enabled = true
   }
 }
+
+resource "proxmox_virtual_environment_firewall_ipset" "hub_net0" {
+  node_name = var.pve_node
+  vm_id     = proxmox_virtual_environment_vm.hub.vm_id
+  name      = "ipfilter-net0"
+  comment   = "Authorized IPv4 source for VM 100 net0"
+
+  cidr {
+    name    = "${local.hub_ip}/32"
+    comment = "homelab-hub static IPv4"
+  }
+}
+
+resource "proxmox_virtual_environment_firewall_ipset" "k3s_net0" {
+  node_name = var.pve_node
+  vm_id     = proxmox_virtual_environment_vm.k3s.vm_id
+  name      = "ipfilter-net0"
+  comment   = "Authorized IPv4 source for VM 200 net0"
+
+  cidr {
+    name    = "${local.k3s_ip}/32"
+    comment = "homelab-k3s static IPv4"
+  }
+}

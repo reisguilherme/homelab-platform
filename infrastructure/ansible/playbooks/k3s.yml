@@ -9,6 +9,7 @@
         name:
           - curl
           - ca-certificates
+          - qemu-guest-agent
           - open-iscsi
           - intel-media-va-driver-non-free
           - vainfo
