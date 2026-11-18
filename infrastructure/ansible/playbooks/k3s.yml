@@ -4,7 +4,7 @@
   become: true
 
   tasks:
-    - name: Install runtime, filesystem, GPU, and telemetry packages
+    - name: Install runtime, filesystem, and telemetry packages
       ansible.builtin.apt:
         name:
           - curl
@@ -12,12 +12,36 @@
           - git
           - qemu-guest-agent
           - open-iscsi
-          - intel-media-va-driver-non-free
-          - vainfo
           - prometheus-node-exporter
           - unattended-upgrades
         state: present
         update_cache: true
+
+    - name: Install Intel media drivers and track extra modules with the Ubuntu generic kernel
+      tags: [igpu]
+      ansible.builtin.apt:
+        name:
+          - linux-image-generic
+          - intel-media-va-driver-non-free
+          - vainfo
+        state: present
+        cache_valid_time: 3600
+
+    - name: Identify the kernel selected for the next guest boot
+      tags: [igpu]
+      ansible.builtin.stat:
+        path: /boot/vmlinuz
+      register: guest_boot_kernel
+
+    - name: Verify that the next guest kernel includes i915
+      tags: [igpu]
+      ansible.builtin.command:
+        argv:
+          - modinfo
+          - -k
+          - "{{ guest_boot_kernel.stat.lnk_source | basename | regex_replace('^vmlinuz-', '') }}"
+          - i915
+      changed_when: false
 
     - name: Ensure mount points exist
       ansible.builtin.file:
@@ -71,6 +95,7 @@
         mode: "0755"
 
     - name: Configure Intel QuickSync /dev/dri udev permissions
+      tags: [igpu]
       ansible.builtin.copy:
         dest: /etc/udev/rules.d/60-intel-dri.rules
         mode: "0644"

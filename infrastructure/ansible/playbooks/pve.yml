@@ -1,4 +1,45 @@
 ---
+- name: Reserve the Intel iGPU on pve01 for VM 200
+  hosts: pve
+  become: true
+  tags: [igpu]
+  vars:
+    reserve_intel_igpu: true
+
+  tasks:
+    - name: Check that the VFIO ID matches only the mapped Intel PCI function
+      ansible.builtin.command: lspci -Dn -d 8086:9bc4
+      register: intel_pci
+      changed_when: false
+      check_mode: false
+      failed_when: >-
+        intel_pci.rc != 0 or intel_pci.stdout_lines | length != 1 or
+        not intel_pci.stdout.startswith('0000:00:02.0 ')
+      when: reserve_intel_igpu | bool
+
+    - name: Reserve the Intel PCI ID before i915 probes display devices
+      ansible.builtin.blockinfile:
+        path: /etc/modprobe.d/homelab-igpu.conf
+        create: true
+        mode: '0644'
+        state: "{{ 'present' if reserve_intel_igpu | bool else 'absent' }}"
+        block: |
+          options vfio-pci ids=8086:9bc4
+          softdep i915 pre: vfio-pci
+      notify: Rebuild Proxmox initramfs
+
+    - name: Load vfio-pci during early boot
+      ansible.builtin.blockinfile:
+        path: /etc/initramfs-tools/modules
+        marker: "# {mark} ANSIBLE MANAGED Intel iGPU for VM 200"
+        state: "{{ 'present' if reserve_intel_igpu | bool else 'absent' }}"
+        block: vfio_pci
+      notify: Rebuild Proxmox initramfs
+
+  handlers:
+    - name: Rebuild Proxmox initramfs
+      ansible.builtin.command: update-initramfs -u -k all
+
 - name: Configure Proxmox VE host vmbr1 NAT, conntrack zone isolation, and LAN TV DNAT
   hosts: pve
   become: true

@@ -23,6 +23,7 @@ age.key
 tfplan
 *.tfvars
 !*.tfvars.example
+!/infrastructure/proxmox/igpu.auto.tfvars
 infrastructure/ansible/inventory/hosts.yml
 .venv/
 __pycache__/

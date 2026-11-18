@@ -130,7 +130,7 @@ resource "proxmox_virtual_environment_vm" "k3s" {
     usb3    = true
   }
 
-  # Intel UHD QuickSync iGPU passthrough (activate after host VFIO blacklist + reboot)
+  # Apply after pve01 has booted with the Intel function bound to vfio-pci.
   dynamic "hostpci" {
     for_each = var.enable_igpu_passthrough ? [1] : []
     content {

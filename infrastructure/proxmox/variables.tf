@@ -92,7 +92,7 @@ variable "igpu_pci_mapping_id" {
 }
 
 variable "enable_igpu_passthrough" {
-  description = "Attach Intel UHD iGPU PCI passthrough to VM 200 (enable after host VFIO blacklist + reboot)"
+  description = "Attach the Intel UHD PCI mapping to VM 200 after pve01 reserves the iGPU for VFIO"
   type        = bool
   default     = false
 }

@@ -40,9 +40,11 @@ Este roteiro executa a transição limpa para `VM 100 (homelab-hub)` + `VM 200 (
 
 ## Passo 3 — Provisionamento Declarativo (`OpenTofu` + `Ansible`)
 
+Antes de aplicar o plano que anexa a iGPU, prepare o host pelo checkout de `main` no controlador `pve01`. Em `infrastructure/ansible/`, use o inventário de produção. Se a VM 200 já existir, prepare primeiro o driver do próximo boot com `ansible-playbook -i inventory/hosts.yml playbooks/k3s.yml --tags igpu`. Execute `ansible-playbook -i inventory/hosts.yml playbooks/pve.yml --tags igpu` para reservar apenas a Intel `8086:9bc4` no initramfs. Reinicie o Proxmox na janela de manutenção e confirme, por SSH, que `lspci -nnk -s 00:02.0` mostra `Kernel driver in use: vfio-pci`. O painel interno pode perder o console do host.
+
 1. Em `homelab-platform/infrastructure/proxmox/`:
    - Copiar `terraform.tfvars.example` para `terraform.tfvars` (gitignored) preenchendo endpoint PVE, chaves SSH, token e IDs dos mappings.
-   - Rodar `tofu init && tofu plan && tofu apply`.
+   - Rodar `tofu init`, revisar `tofu plan -out=tfplan` e aplicar o plano revisado com `tofu apply tfplan`. A opção de produção está em `igpu.auto.tfvars`. Para uma VM 200 já existente, assegurar uma parada limpa e partida a frio para o QEMU carregar `hostpci0`.
    - Conferir que `VM 100 (homelab-hub)` e `VM 200 (homelab-k3s)` subiram em `nvme-secondary`, com firewall PVE ativo e `onboot=1`.
 2. Em `homelab-platform/infrastructure/ansible/`:
    - Preencher `inventory/hosts.yml` (gitignored) e os arquivos privados em `/opt/homelab-hub/.env` na `VM 100`.
@@ -51,6 +53,8 @@ Este roteiro executa a transição limpa para `VM 100 (homelab-hub)` + `VM 200 (
      - Autenticar o Tailscale na `VM 100` (usando o mesmo Tailnet/hostname ou atualizando o IP Tailscale no DNS Cloudflare) e validar Traefik TLS wildcard `*.greis.dev.br`, Authelia e Grafana/Loki.
    - Rodar `ansible-playbook -i inventory/hosts.yml playbooks/k3s.yml`:
      - Conferir `/mnt/storage` (18 TB ext4 montado por UUID), `/mnt/transcode` (disco de scratch 48 GiB), `/dev/dri/renderD128`, `RequiresMountsFor` no `k3s.service`, e `flux-system` com a chave `sops-age`.
+
+Para devolver a iGPU ao host, altere `igpu.auto.tfvars` para `false` e `reserve_intel_igpu` em `pve.yml` para `false` em um commit revisado. Aplique o plano que remove `hostpci0`, confirme a remoção em `qm config 200`, execute o playbook do PVE com `--tags igpu` e reinicie o host. Confirme o retorno de `i915` com `lspci -nnk -s 00:02.0`.
 
 ## Passo 4 — Restauração de Appdata & Ativação GitOps (`FluxCD`)
 
