@@ -10,7 +10,6 @@ http:
       entryPoints: ["websecure"]
       middlewares: ["private-network-only", "security-headers"]
       service: k3s-ingress
-      tls: {}
 
     # Exceção LAN HTTP para Smart TVs da casa (sem prefixo)
     spokes-lan-tv:
@@ -26,7 +25,6 @@ http:
       entryPoints: ["websecure"]
       middlewares: ["private-network-only", "sso-auth", "security-headers"]
       service: k3s-ingress
-      tls: {}
 
   services:
     k3s-ingress:

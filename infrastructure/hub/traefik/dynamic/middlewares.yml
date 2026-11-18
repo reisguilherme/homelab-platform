@@ -12,13 +12,15 @@ http:
     private-network-only:
       ipAllowList:
         sourceRange:
-          - "100.64.0.0/10"   # Tailscale CGNAT
-          - "192.168.1.0/24"  # LAN residencial
-          - "172.28.64.0/24"  # Rede interna guests Proxmox
+          - "100.64.0.0/10"       # Tailscale IPv4 CGNAT
+          - "fd7a:115c:a1e0::/48" # Tailscale IPv6 ULA
+          - "192.168.1.0/24"      # LAN residencial
+          - "172.28.64.0/24"      # Rede interna guests Proxmox
+          - "127.0.0.1/32"        # Localhost healthchecks
 
     sso-auth:
       forwardAuth:
-        address: "http://authelia:9091/api/authz/forward-auth"
+        address: "http://127.0.0.1:9091/api/authz/forward-auth"
         trustForwardHeader: true
         authResponseHeaders:
           - "Remote-User"
