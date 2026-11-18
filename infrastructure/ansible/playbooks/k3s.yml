@@ -9,6 +9,7 @@
         name:
           - curl
           - ca-certificates
+          - git
           - qemu-guest-agent
           - open-iscsi
           - intel-media-va-driver-non-free
@@ -124,8 +125,11 @@
         creates: /usr/local/bin/flux
 
     - name: Create flux-system namespace
-      ansible.builtin.command:
-        cmd: k3s kubectl create namespace flux-system --dry-run=client -o yaml | k3s kubectl apply -f -
+      ansible.builtin.shell: |
+        set -euo pipefail
+        k3s kubectl create namespace flux-system --dry-run=client -o yaml | k3s kubectl apply -f -
+      args:
+        executable: /bin/bash
       changed_when: false
 
     - name: Provision SOPS Age private decryption key secret in flux-system
@@ -136,6 +140,7 @@
           --from-file=age.agekey=/dev/stdin \
           --dry-run=client -o yaml | k3s kubectl apply -f -
       args:
+        executable: /bin/bash
         stdin: "{{ lookup('file', sops_age_key_file) }}"
       no_log: true
 
@@ -166,8 +171,15 @@
       when: lookup('env', 'GITHUB_TOKEN') | length == 0
 
     - name: Apply Flux cluster root kustomization when bootstrapping without PAT
-      ansible.builtin.command:
-        cmd: k3s kubectl apply -k https://github.com/{{ flux_repo_owner }}/{{ flux_repo_name }}//{{ flux_cluster_path }}?ref={{ flux_repo_branch }}
+      ansible.builtin.shell: |
+        set -euo pipefail
+        k3s kubectl wait --for=condition=Established \
+          crd/gitrepositories.source.toolkit.fluxcd.io \
+          crd/kustomizations.kustomize.toolkit.fluxcd.io \
+          --timeout=60s
+        k3s kubectl apply -k https://github.com/{{ flux_repo_owner }}/{{ flux_repo_name }}//{{ flux_cluster_path }}?ref={{ flux_repo_branch }}
+      args:
+        executable: /bin/bash
       environment:
         KUBECONFIG: /etc/rancher/k3s/k3s.yaml
       when: lookup('env', 'GITHUB_TOKEN') | length == 0
