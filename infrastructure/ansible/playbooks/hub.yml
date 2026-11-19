@@ -99,6 +99,13 @@
         dest: /opt/homelab-hub/
         rsync_opts:
           - "--exclude=.env"
+          - "--exclude=/observability/prometheus/"
+
+    - name: Stage the complete Prometheus configuration for validation
+      ansible.posix.synchronize:
+        src: ../../hub/observability/prometheus/
+        dest: /opt/homelab-hub/observability/prometheus-candidate/
+        delete: true
 
     - name: Sync declarative Homepage config files into writable /srv/hub/homepage
       ansible.builtin.copy:
@@ -176,6 +183,25 @@
       when:
         - hub_env.stat.exists
         - not authelia_users_db.stat.exists
+
+    - name: Validate and publish the Prometheus configuration and rules
+      when: hub_env.stat.exists
+      block:
+        - name: Validate the staged files with the configured Prometheus image
+          ansible.builtin.command:
+            cmd: >-
+              docker compose run --rm --no-deps --entrypoint /bin/promtool
+              --volume /opt/homelab-hub/observability/prometheus-candidate:/etc/prometheus:ro
+              prometheus check config /etc/prometheus/prometheus.yml
+            chdir: /opt/homelab-hub
+          changed_when: false
+
+        - name: Publish validated files to the directory watched by Prometheus
+          ansible.builtin.command:
+            cmd: rsync -rc --delay-updates --delete-after --itemize-changes prometheus-candidate/ prometheus/
+            chdir: /opt/homelab-hub/observability
+          register: prometheus_sync
+          changed_when: prometheus_sync.stdout | length > 0
 
     - name: Start Hub Docker Compose stack when .env is present
       ansible.builtin.command:
