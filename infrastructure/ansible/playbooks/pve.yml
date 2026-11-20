@@ -1,4 +1,46 @@
 ---
+- name: Expose physical host metrics on the guest bridge
+  hosts: pve
+  become: true
+  tags: [pve_metrics]
+  vars:
+    exporter_listen_address: "172.28.64.1:9100"
+
+  tasks:
+    - name: Install node exporter without starting the package's wildcard listener
+      ansible.builtin.apt:
+        name: prometheus-node-exporter
+        state: present
+        install_recommends: false
+        policy_rc_d: 101
+        update_cache: true
+        cache_valid_time: 86400
+      register: exporter_package
+
+    - name: Configure the PVE node exporter's private listener
+      ansible.builtin.lineinfile:
+        path: /etc/default/prometheus-node-exporter
+        regexp: '^ARGS='
+        line: 'ARGS="--web.listen-address={{ exporter_listen_address }}"'
+        create: true
+        mode: "0644"
+      register: exporter_bind
+
+    - name: Check the active listener in case a previous run was interrupted
+      ansible.builtin.command: ss -Hlnt 'sport = :9100'
+      register: exporter_sockets
+      changed_when: false
+      check_mode: false
+
+    - name: Enable node exporter with its private listener
+      ansible.builtin.systemd:
+        name: prometheus-node-exporter
+        enabled: true
+        state: >-
+          {{ 'restarted' if exporter_bind.changed or exporter_sockets.stdout_lines | length != 1
+             or exporter_listen_address not in exporter_sockets.stdout else 'started' }}
+      when: not (ansible_check_mode and exporter_package.changed)
+
 - name: Provision the cloud-init vendor data used by the Hub and K3s VMs
   hosts: pve
   become: true

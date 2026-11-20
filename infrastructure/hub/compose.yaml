@@ -93,14 +93,14 @@ services:
     user: "65534:65534"
     command:
       - --config.file=/etc/prometheus/prometheus.yml
+      - --enable-feature=auto-reload-config
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=14d
       - --storage.tsdb.retention.size=4GB
     ports:
       - "172.28.64.100:9090:9090"
     volumes:
-      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./observability/rules:/etc/prometheus/rules:ro
+      - ./observability/prometheus:/etc/prometheus:ro
       - /srv/hub/prometheus:/prometheus
     networks:
       - hub_net

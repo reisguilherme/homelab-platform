@@ -55,6 +55,17 @@ resource "proxmox_virtual_environment_firewall_rules" "host" {
     enabled = true
   }
 
+  rule {
+    type    = "in"
+    action  = "ACCEPT"
+    comment = "Allow Hub Prometheus to scrape the PVE node exporter"
+    source  = local.hub_ip
+    dest    = local.gateway_ip
+    proto   = "tcp"
+    dport   = "9100"
+    enabled = true
+  }
+
   depends_on = [proxmox_virtual_environment_cluster_firewall.cluster]
 }
 
