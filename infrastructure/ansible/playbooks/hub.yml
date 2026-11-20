@@ -26,6 +26,7 @@
           - qemu-guest-agent
           - rsync
           - prometheus-node-exporter
+          - python3-yaml
           - unattended-upgrades
         state: present
         update_cache: true
@@ -150,6 +151,53 @@
       ansible.builtin.import_tasks: tasks/authelia-identities.yml
       when: hub_env.stat.exists
 
+    - name: Create private storage for sanitized Authelia events
+      ansible.builtin.file:
+        path: /var/log/homelab-sso-audit
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Create durable private storage for Promtail positions
+      ansible.builtin.file:
+        path: /srv/hub/promtail-positions
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Check for persistent log positions
+      ansible.builtin.stat:
+        path: /srv/hub/promtail-positions/positions.yaml
+      register: persistent_positions
+
+    - name: Preserve existing log offsets before the first collector replacement
+      when: not persistent_positions.stat.exists
+      block:
+        - name: Check for a running Promtail container
+          ansible.builtin.command:
+            argv: [docker, ps, --filter, 'name=^/hub-promtail$', --quiet]
+          register: previous_promtail
+          changed_when: false
+
+        - name: Check whether the live collector has written its old positions
+          ansible.builtin.command: docker exec hub-promtail test -s /tmp/positions.yaml
+          when: previous_promtail.stdout | length > 0
+          register: legacy_positions
+          changed_when: false
+          failed_when: legacy_positions.rc not in [0, 1]
+
+        - name: Migrate the collector positions before Compose applies its writable mount
+          ansible.builtin.command: docker cp hub-promtail:/tmp/positions.yaml /srv/hub/promtail-positions/positions.yaml
+          when: previous_promtail.stdout | length > 0 and legacy_positions.rc == 0
+
+    - name: Collect sanitized Hub identity metrics with systemd
+      ansible.builtin.import_tasks: tasks/textfile.yml
+      vars:
+        metric_source: hub-sso
+      when: hub_env.stat.exists
+
     - name: Validate and publish the Prometheus configuration and rules
       when: hub_env.stat.exists
       block:
@@ -175,6 +223,7 @@
         chdir: /opt/homelab-hub
       environment:
         TRAEFIK_CONFIG_SHA: "{{ lookup('ansible.builtin.file', '../../hub/traefik/traefik.yml', rstrip=false) | hash('sha256') }}"
+        PROMTAIL_CONFIG_SHA: "{{ lookup('ansible.builtin.file', '../../hub/observability/promtail-hub.yml', rstrip=false) | hash('sha256') }}"
       when: hub_env.stat.exists
 
     - name: Clean up Grafana after Compose has removed the orphan container

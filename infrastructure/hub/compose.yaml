@@ -131,9 +131,13 @@ services:
   promtail-hub:
     image: grafana/promtail:3.4.2
     container_name: hub-promtail
+    labels:
+      homelab.greis.dev.br/log-config: ${PROMTAIL_CONFIG_SHA:-local}
     restart: unless-stopped
     command: -config.file=/etc/promtail/promtail-hub.yml
     volumes:
+      - /var/log/homelab-sso-audit:/var/log/homelab-sso-audit:ro
+      - /srv/hub/promtail-positions:/var/lib/promtail
       - ./observability/promtail-hub.yml:/etc/promtail/promtail-hub.yml:ro
       - /var/log/journal:/var/log/journal:ro
       - /etc/machine-id:/etc/machine-id:ro

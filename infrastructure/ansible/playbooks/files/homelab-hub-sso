@@ -1,0 +1,205 @@
+#!/usr/bin/python3
+"""Publish only approved identity metadata to node_exporter's textfile directory."""
+from collections import Counter
+from datetime import datetime, timedelta, timezone
+from ipaddress import ip_address, ip_network
+import json
+import os
+from pathlib import Path
+import re
+import sqlite3
+import sys
+from urllib.parse import urlsplit
+
+import yaml
+
+
+IDENTIFIER = re.compile(r"[a-z0-9._-]{1,64}")
+SERVICE = re.compile(r"[a-z0-9-]{1,63}\.greis\.dev\.br")
+NETWORKS = (
+    ("Tailscale", (ip_network("100.64.0.0/10"), ip_network("fd7a:115c:a1e0::/48"))),
+    ("LAN", (ip_network("192.168.1.0/24"),)),
+    ("Interno", tuple(map(ip_network, ("172.16.0.0/12", "10.0.0.0/8", "127.0.0.0/8", "::1/128")))),
+)
+DAY = "auth_type = '1FA' AND time >= datetime('now', '-1 day') AND time <= datetime('now', '+1 second')"
+GAUGES = {
+    "homelab_sso_users_total": "Current number of configured accounts in each state.",
+    "homelab_sso_user_group": "Group membership of a configured identity; an empty group denotes no groups.",
+    "homelab_sso_2fa_enabled": "Whether any second-factor method is enabled in the issuer.",
+    "homelab_sso_oidc_clients_total": "Current number of configured OIDC clients.",
+    "homelab_sso_authentications_24h": "First-factor attempts recorded by the issuer over the past 24 hours.",
+    "homelab_sso_last_login_timestamp_seconds": "Latest successful first-factor login of a current user in the past 24 hours.",
+    "homelab_sso_audit_available": "Whether the native authentication audit could be read during this collection.",
+}
+
+
+def read_config(path):
+    try:
+        return yaml.safe_load(path.read_bytes())
+    except yaml.YAMLError:
+        # YAML diagnostics can quote the original line, including a secret.
+        raise ValueError("Invalid identity configuration YAML") from None
+
+
+def hostname(url):
+    try:
+        return urlsplit(url or "").hostname or ""
+    except ValueError:
+        return ""
+
+
+def source_net(address):
+    try:
+        ip = ip_address(address)
+    except ValueError:
+        return "Desconhecida"
+    return next((name for name, networks in NETWORKS if any(ip in net for net in networks)),
+                "Desconhecida")
+
+
+def inventory(users, config):
+    totals = Counter()
+    for name, entry in users.items():
+        if not isinstance(name, str) or not IDENTIFIER.fullmatch(name):
+            raise ValueError("Invalid identity label")
+        disabled = entry.get("disabled", False)
+        groups = entry.get("groups", [])
+        if not isinstance(disabled, bool) or not isinstance(groups, list):
+            raise ValueError("Invalid account state or groups")
+        if any(not isinstance(g, str) or not IDENTIFIER.fullmatch(g) for g in groups):
+            raise ValueError("Invalid identity group label")
+        totals["disabled" if disabled else "enabled"] += 1
+        for group in sorted(set(groups)) or [""]:
+            print(f'homelab_sso_user_group{{user="{name}",group="{group}",disabled="{int(disabled)}"}} 1')
+    for state in ("enabled", "disabled"):
+        print(f'homelab_sso_users_total{{state="{state}"}} {totals[state]}')
+    two_factor = (not config.get("totp", {}).get("disable", False)
+                  or not config.get("webauthn", {}).get("disable", False)
+                  or bool(config.get("duo_api", {}).get("hostname")))
+    print("homelab_sso_2fa_enabled", int(two_factor))
+    print("homelab_sso_oidc_clients_total", len(config.get("identity_providers", {}).get("oidc", {}).get("clients", [])))
+
+
+def publish_events(db, users, allowed, oidc_targets, spool):
+    # The private cursor advances only after all JSON lines have been flushed.
+    # After an interrupted write a fully written event can replay with the same
+    # body and original timestamp. Loki and the dashboard can deduplicate it.
+    cursor_path = spool / ".cursor"
+    cursor = json.loads(cursor_path.read_text()) if cursor_path.exists() else {"authentication": 0, "oidc": 0}
+    # A database restore can rewind SQLite sequences. Re-read the retained day.
+    for source, table in (("authentication", "authentication_logs"), ("oidc", "oauth2_access_token_session")):
+        maximum = db.execute(f"SELECT coalesce(max(id), 0) FROM {table}").fetchone()[0]
+        if cursor[source] > maximum:
+            cursor[source] = 0
+    events = []
+    for row_id, when, name, success, factor, uri, ip in db.execute("""
+        SELECT id, time, username, successful, auth_type, request_uri, remote_ip
+        FROM authentication_logs WHERE id > ? AND time >= datetime('now', '-1 day')
+        ORDER BY id LIMIT 500
+    """, [cursor["authentication"]]):
+        cursor["authentication"] = row_id
+        if factor not in {"1FA", "TOTP", "WebAuthn", "Duo"}:
+            continue
+        action = ("login_ok" if factor == "1FA" else "2fa_ok") if success else "login_fail"
+        host = hostname(uri)
+        events.append((when, name, action, host if host in allowed else "desconhecido", source_net(ip)))
+    # An access-token record exists only after the client exchanged its code.
+    # requested_at is the time of the authorization request for that issued grant.
+    for row_id, when, name, client in db.execute("""
+        SELECT a.id, a.requested_at, u.username, a.client_id FROM oauth2_access_token_session a
+        LEFT JOIN user_opaque_identifier u ON u.identifier = a.subject
+        WHERE a.id > ? AND a.requested_at >= datetime('now', '-1 day')
+        ORDER BY a.id LIMIT 500
+    """, [cursor["oidc"]]):
+        cursor["oidc"] = row_id
+        if client in oidc_targets:
+            events.append((when, name, "oidc_grant", oidc_targets[client], "Desconhecida"))
+    now = datetime.now(timezone.utc)
+    if events:
+        # Rotation by collection day keeps the number of files watched by Promtail bounded.
+        path = spool / f"{now.date()}.jsonl"
+        with path.open("a+b") as stream:
+            # Recover a partial final line following a crash.
+            if stream.tell():
+                stream.seek(-1, 2)
+                if stream.read(1) != b"\n":
+                    stream.seek(0)
+                    end = 0
+                    for line in stream:
+                        if line.endswith(b"\n"):
+                            end = stream.tell()
+                    stream.truncate(end)
+            for when, name, action, target, network in sorted(events, key=lambda item: item[0]):
+                moment = datetime.fromisoformat(when.replace("Z", "+00:00"))
+                if moment.tzinfo is None:
+                    moment = moment.replace(tzinfo=timezone.utc)
+                entry = {"timestamp": moment.astimezone(timezone.utc).isoformat(), "action": action,
+                         "user": name if name in users else "desconhecido", "target": target, "source_net": network}
+                stream.write(json.dumps(entry, separators=(",", ":")).encode() + b"\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+    encoded = json.dumps(cursor)
+    if not cursor_path.exists() or cursor_path.read_text() != encoded:
+        candidate = spool / ".cursor.next"
+        with candidate.open("w") as stream:
+            stream.write(encoded)
+            stream.flush()
+            os.fsync(stream.fileno())
+        candidate.replace(cursor_path)
+    for path in spool.glob("????-??-??.jsonl"):
+        if path.stem < str((now - timedelta(days=2)).date()):
+            path.unlink()
+
+
+def audit(users, config, database, spool=None):
+    allowed = set()
+    for rule in config["access_control"]["rules"]:
+        domains = rule.get("domain", [])
+        allowed.update([domains] if isinstance(domains, str) else domains)
+    for cookie in config["session"]["cookies"]:
+        allowed.update(hostname(cookie.get(key)) for key in ("authelia_url", "default_redirection_url"))
+    allowed = {host for host in allowed if SERVICE.fullmatch(host)}
+    oidc_targets = {}
+    for client in config.get("identity_providers", {}).get("oidc", {}).get("clients", []):
+        hosts = {hostname(uri) for uri in client.get("redirect_uris", [])}
+        if len(hosts) == 1 and hosts <= allowed:
+            oidc_targets[client["client_id"]] = hosts.pop()
+    db = sqlite3.connect(database.as_uri() + "?mode=ro", uri=True, timeout=2)
+    try:
+        db.execute("PRAGMA query_only=ON")
+        db.execute("BEGIN")
+        counts = dict(db.execute(f"SELECT successful, count(*) FROM authentication_logs WHERE {DAY} GROUP BY successful"))
+        rows = db.execute(f"""
+            SELECT username, unixepoch(time), request_uri, remote_ip FROM (
+                SELECT username, time, request_uri, remote_ip,
+                       row_number() OVER (PARTITION BY username ORDER BY time DESC, id DESC) AS recent
+                FROM authentication_logs WHERE {DAY} AND successful = 1
+            ) WHERE recent = 1
+        """).fetchall()
+        if spool is not None:
+            publish_events(db, users, allowed, oidc_targets, spool)
+    finally:
+        db.close()
+    for successful, result in ((1, "ok"), (0, "fail")):
+        print(f'homelab_sso_authentications_24h{{result="{result}"}} {counts.get(successful, 0)}')
+    for user, timestamp, uri, remote in rows:
+        if user in users and timestamp is not None:
+            host = hostname(uri)
+            target = host if host in allowed else "desconhecido"
+            print(f'homelab_sso_last_login_timestamp_seconds{{user="{user}",target="{target}",source_net="{source_net(remote)}"}} {timestamp}')
+
+
+if __name__ == "__main__":
+    users = read_config(Path("/srv/hub/authelia/users_database.yml"))["users"]
+    config = read_config(Path("/opt/homelab-hub/authelia/configuration.yml"))
+    for name, description in GAUGES.items():
+        print(f"# HELP {name} {description}")
+        print(f"# TYPE {name} gauge")
+    inventory(users, config)
+    try:
+        audit(users, config, Path("/srv/hub/authelia/db.sqlite3"), Path("/var/log/homelab-sso-audit"))
+    except sqlite3.Error as error:
+        print("SSO audit unavailable:", type(error).__name__, file=sys.stderr)
+        print("homelab_sso_audit_available 0")
+    else:
+        print("homelab_sso_audit_available 1")

@@ -2,12 +2,31 @@ server:
   http_listen_port: 9080
 
 positions:
-  filename: /tmp/positions.yaml
+  filename: /var/lib/promtail/positions.yaml
 
 clients:
   - url: http://loki:3100/loki/api/v1/push
 
 scrape_configs:
+  - job_name: sso-audit
+    static_configs:
+      - targets: [localhost]
+        labels:
+          job: sso-audit
+          host: homelab-hub
+          __path__: /var/log/homelab-sso-audit/*.jsonl
+    pipeline_stages:
+      - json:
+          expressions:
+            timestamp: timestamp
+            action: action
+      - labels:
+          action:
+      - timestamp:
+          source: timestamp
+          format: RFC3339Nano
+          action_on_failure: skip
+
   - job_name: ssh-auth
     journal:
       path: /var/log/journal
@@ -43,3 +62,50 @@ scrape_configs:
         target_label: 'container'
       - target_label: 'host'
         replacement: 'homelab-hub'
+    pipeline_stages:
+      - match:
+          selector: '{container="hub-authelia"}'
+          stages:
+            - json:
+                expressions:
+                  message: msg
+                  severity: level
+                  occurred: time
+                  endpoint: path
+                  verb: method
+                  address: remote_ip
+            - regex:
+                source: message
+                expression: "^Access to 'https?://(?P<service>(?:auth|homelab|homeship|proxmox|hermes|media-mcp|radarr|sonarr|prowlarr|bazarr|qbittorrent|jellyfin|overseer)\\.greis\\.dev\\.br)(?::443)?(?:[/?#][^']*)?' is forbidden to user '(?P<actor>[a-z0-9._-]{1,64})'$"
+            - template:
+                source: safe_record
+                template: >-
+                  {{- $msg := default "" .message -}}
+                  {{- $level := default "info" .severity -}}
+                  {{- if not (regexMatch "^(trace|debug|info|warning|warn|error|fatal|panic)$" $level) }}{{ $level = "unknown" }}{{ end -}}
+                  {{- $time := default "" .occurred -}}
+                  {{- if not (regexMatch "^[0-9T:.Z+-]{19,40}$" $time) }}{{ $time = "" }}{{ end -}}
+                  {{- $path := default "" .endpoint -}}
+                  {{- if not (regexMatch "^(/api/(firstfactor|secondfactor/(totp|webauthn|duo)|authz/forward-auth|oidc/(authorization|token|userinfo|jwks))|/[.]well-known/openid-configuration)$" $path) }}{{ $path = "" }}{{ end -}}
+                  {{- $method := default "" .verb -}}
+                  {{- if not (regexMatch "^(GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS)$" $method) }}{{ $method = "" }}{{ end -}}
+                  {{- $address := default "" .address -}}
+                  {{- $net := "Desconhecida" -}}
+                  {{- if regexMatch "^(100[.](6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])[.]|fd7a:115c:a1e0:)" $address }}{{ $net = "Tailscale" -}}
+                  {{- else if regexMatch "^192[.]168[.]1[.]" $address }}{{ $net = "LAN" -}}
+                  {{- else if regexMatch "^(10[.]|127[.]|172[.](1[6-9]|2[0-9]|3[01])[.]|::1$)" $address }}{{ $net = "Interno" }}{{ end -}}
+                  {{- $public := "Authelia runtime event" -}}
+                  {{- if and (hasPrefix "Access to '" $msg) (contains "is forbidden to user '" $msg) -}}
+                    {{- $public = printf "Access to 'https://%s' is forbidden to user '%s'" (default "desconhecido" .service) (default "desconhecido" .actor) -}}
+                  {{- else if and (hasPrefix "Access to '" $msg) (contains "is not authorized" $msg) }}{{ $public = "Unauthenticated access redirected" -}}
+                  {{- else if or (hasPrefix "Unsuccessful 1FA authentication attempt" $msg) (hasPrefix "Error occurred getting details for user" $msg) }}{{ $public = "Unsuccessful 1FA authentication attempt by user 'desconhecido'" -}}
+                  {{- else if hasPrefix "Successful 1FA authentication attempt" $msg }}{{ $public = "Successful 1FA authentication attempt" -}}
+                  {{- else if regexMatch "(?i)storage|database|migration" $msg }}{{ $public = "Authelia storage event" -}}
+                  {{- else if regexMatch "(?i)authorization request|openid|oidc|token request" $msg }}{{ $public = "Authelia OIDC event" -}}
+                  {{- else if regexMatch "(?i)configuration|validator" $msg }}{{ $public = "Authelia configuration event" -}}
+                  {{- else if regexMatch "(?i)startup|starting|listening|shutdown|stopping" $msg }}{{ $public = "Authelia service lifecycle event" -}}
+                  {{- else if regexMatch "^(error|fatal|panic)$" $level }}{{ $public = "Authelia operational error" -}}
+                  {{- else if regexMatch "^warn(ing)?$" $level }}{{ $public = "Authelia operational warning" }}{{ end -}}
+                  {{- dict "msg" $public "level" $level "time" $time "method" $method "path" $path "source_net" $net | toJson -}}
+            - output:
+                source: safe_record

@@ -1,6 +1,8 @@
 #!/usr/bin/python3
-"""Expose firewall state and the measured CPU package power for node_exporter."""
+"""Expose firewall, CPU package power and Gate filesystem metrics."""
+import os
 from pathlib import Path
+import stat
 from subprocess import check_output
 from time import monotonic, sleep
 
@@ -21,6 +23,33 @@ def package_power():
     return None
 
 
+def gate_usage():
+    device = Path("/dev/disk/by-uuid/58a9af19-1ed0-4488-b08a-c34c35e5ebbf")
+    mount = Path("/mnt/gate-4tb")
+    try:
+        block = device.stat()
+    except FileNotFoundError:
+        return False, None
+    if not stat.S_ISBLK(block.st_mode):
+        raise ValueError("Gate UUID does not resolve to a block device")
+    if not mount.is_mount():
+        return True, None
+    # Match the opened filesystem against the disk even if a mount changes mid-scrape.
+    fd = os.open(mount, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        if os.fstat(fd).st_dev != block.st_rdev:
+            return True, None
+        return True, os.fstatvfs(fd)
+    finally:
+        os.close(fd)
+
+
+def gauge(name, description, value):
+    print(f"# HELP {name} {description}")
+    print(f"# TYPE {name} gauge")
+    print(name, value)
+
+
 status = check_output(["/usr/sbin/pve-firewall", "status"], text=True).strip()
 if status not in {f"Status: {state}/{service}" for state in ("enabled", "disabled") for service in ("running", "stopped")}:
     raise ValueError("unrecognized pve-firewall status")
@@ -32,3 +61,10 @@ if watts is not None:
     print("# HELP pve_cpu_package_watts Average CPU package power over one second.")
     print("# TYPE pve_cpu_package_watts gauge")
     print(f'pve_cpu_package_watts{{package="0"}} {watts:.6f}')
+
+present, usage = gate_usage()
+gauge("pve_gate4tb_present", "Whether the Gate UUID identifies an attached block device.", int(present))
+gauge("pve_gate4tb_mounted", "Whether the Gate filesystem is mounted at its designated path.", int(usage is not None))
+if usage is not None:
+    gauge("pve_gate4tb_size_bytes", "Size of the mounted Gate filesystem.", usage.f_blocks * usage.f_frsize)
+    gauge("pve_gate4tb_avail_bytes", "Free bytes available to non-root users on the Gate filesystem.", usage.f_bavail * usage.f_frsize)
