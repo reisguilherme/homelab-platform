@@ -45,7 +45,7 @@ services:
         max-file: "2"
 
   authelia:
-    image: authelia/authelia:4.38
+    image: authelia/authelia:4.38.19@sha256:46021dc20efdcc5cdc38a29e3050b8835429a155ae6215388ed3b793a02eb0ab
     container_name: hub-authelia
     restart: unless-stopped
     security_opt:

@@ -1,4 +1,16 @@
 ---
+- name: Prepare the identity tools on the controller
+  hosts: pve
+  become: true
+  tasks:
+    - name: Install the pinned encryption tool
+      ansible.builtin.import_tasks: tasks/sops.yml
+
+    - name: Install file-backend validation dependencies
+      ansible.builtin.apt:
+        name: [python3-argon2, python3-yaml]
+        state: present
+
 - name: Configure VM 100 (homelab-hub)
   hosts: hub
   become: true
@@ -77,6 +89,7 @@
         mode: "0755"
       loop:
         - /opt/homelab-hub
+        - /opt/homelab-hub/authelia
         - /srv/hub/traefik/acme
         - /srv/hub/traefik/logs
         - /srv/hub/authelia
@@ -101,6 +114,7 @@
         dest: /opt/homelab-hub/
         rsync_opts:
           - "--exclude=.env"
+          - "--exclude=/authelia/"
           - "--exclude=/observability/prometheus/"
 
     - name: Stage the complete Prometheus configuration for validation
@@ -108,15 +122,6 @@
         src: ../../hub/observability/prometheus/
         dest: /opt/homelab-hub/observability/prometheus-candidate/
         delete: true
-
-    - name: Sync declarative Authelia configuration
-      ansible.builtin.copy:
-        src: /opt/homelab-hub/authelia/configuration.yml.example
-        dest: /opt/homelab-hub/authelia/configuration.yml
-        remote_src: true
-        force: true
-        mode: "0644"
-      register: authelia_cfg_copy
 
     - name: Initialize CoreDNS zone file from template when absent
       ansible.builtin.copy:
@@ -141,38 +146,9 @@
         path: /opt/homelab-hub/.env
       register: hub_env
 
-    - name: Check whether Authelia users_database.yml is provisioned
-      ansible.builtin.stat:
-        path: /srv/hub/authelia/users_database.yml
-      register: authelia_users_db
-
-    - name: Generate /srv/hub/authelia/users_database.yml for unified root user
-      ansible.builtin.shell: |
-        set -euo pipefail
-        set -a
-        . /opt/homelab-hub/.env
-        set +a
-        ROOT_USER="${ROOT_USERNAME:-root}"
-        PASS="${ROOT_PASSWORD:?ROOT_PASSWORD must be defined in /opt/homelab-hub/.env}"
-        HASH="$(docker run --rm authelia/authelia:4.38 authelia crypto hash generate argon2 --password "${PASS}" | sed -n 's/^Digest: //p')"
-        test -n "${HASH}"
-        umask 0177
-        cat > /srv/hub/authelia/users_database.yml <<EOF
-        users:
-          ${ROOT_USER}:
-            disabled: false
-            displayname: "HomeServer Root"
-            password: "${HASH}"
-            email: root@greis.dev.br
-            groups:
-              - admins
-        EOF
-      args:
-        executable: /bin/bash
-      no_log: true
-      when:
-        - hub_env.stat.exists
-        - not authelia_users_db.stat.exists
+    - name: Reconcile the reviewed SOPS catalog and OIDC issuer
+      ansible.builtin.import_tasks: tasks/authelia-identities.yml
+      when: hub_env.stat.exists
 
     - name: Validate and publish the Prometheus configuration and rules
       when: hub_env.stat.exists
@@ -220,14 +196,6 @@
         - name: Remove the retired Grafana image
           ansible.builtin.command: docker image rm grafana/grafana:11.6.0
           when: grafana_image.stdout | trim | length > 0
-
-    - name: Recreate hub-authelia when declarative configuration changes
-      ansible.builtin.command:
-        cmd: docker compose up -d --force-recreate authelia
-        chdir: /opt/homelab-hub
-      when:
-        - hub_env.stat.exists
-        - authelia_cfg_copy.changed
 
   handlers:
     - name: Restart systemd-resolved

@@ -1,0 +1,97 @@
+theme: dark
+server:
+  address: "tcp://0.0.0.0:9091"
+
+log:
+  level: info
+  format: json
+
+totp:
+  disable: true
+
+webauthn:
+  disable: true
+
+authentication_backend:
+  password_reset:
+    disable: true
+  file:
+    path: /var/lib/authelia/users_database.yml
+    password:
+      algorithm: argon2
+      argon2:
+        variant: argon2id
+        iterations: 3
+        memory: 65536
+        parallelism: 4
+        key_length: 32
+        salt_length: 16
+
+session:
+  name: authelia_session
+  same_site: lax
+  inactivity: 1h
+  expiration: 12h
+  remember_me: 7d
+  cookies:
+    - domain: greis.dev.br
+      authelia_url: https://auth.greis.dev.br
+      default_redirection_url: https://homelab.greis.dev.br
+
+storage:
+  local:
+    path: /var/lib/authelia/db.sqlite3
+
+notifier:
+  filesystem:
+    filename: /var/lib/authelia/notification.txt
+
+access_control:
+  default_policy: deny
+  rules:
+    - domain:
+        - "*.greis.dev.br"
+      policy: one_factor
+      subject: ["group:admins"]
+    - domain: [homelab.greis.dev.br, homeship.greis.dev.br]
+      policy: one_factor
+      subject: ["group:homelab-viewers", "group:media-ops"]
+    - domain: proxmox.greis.dev.br
+      policy: one_factor
+      subject: ["group:homelab-viewers", "group:pve-auditors"]
+    - domain:
+        - radarr.greis.dev.br
+        - sonarr.greis.dev.br
+        - prowlarr.greis.dev.br
+        - bazarr.greis.dev.br
+        - qbittorrent.greis.dev.br
+      policy: one_factor
+      subject: ["group:media-ops"]
+
+identity_providers:
+  oidc:
+    hmac_secret: {{ oidc.hmac_secret | to_json }}
+    jwks:
+      - algorithm: RS256
+        use: sig
+        key: {{ oidc.signing_key | to_json }}
+    authorization_policies:
+      proxmox_access:
+        default_policy: deny
+        rules:
+          - policy: one_factor
+            subject: ["group:admins", "group:pve-auditors", "group:homelab-viewers"]
+    clients:
+      - client_id: proxmox
+        client_name: Proxmox VE
+        client_secret: {{ oidc.pve_client_digest | to_json }}
+        authorization_policy: proxmox_access
+        consent_mode: implicit
+        public: false
+        require_pkce: true
+        pkce_challenge_method: S256
+        redirect_uris: ["https://proxmox.greis.dev.br"]
+        scopes: [openid, profile, email, groups]
+        response_types: [code]
+        grant_types: [authorization_code]
+        token_endpoint_auth_method: client_secret_basic

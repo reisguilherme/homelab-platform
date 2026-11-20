@@ -1,0 +1,140 @@
+---
+- name: Configure native Authelia OIDC on Proxmox VE
+  hosts: pve
+  become: true
+  vars:
+    oidc_issuer: https://auth.greis.dev.br
+    oidc_group_roles:
+      admins-authelia: PVEAdmin
+      pve-auditors-authelia: PVEAuditor
+      homelab-viewers-authelia: PVEAuditor
+    oidc_settings:
+      issuer-url: "{{ oidc_issuer }}"
+      client-id: proxmox
+      scopes: openid email profile groups
+      autocreate: 1
+      groups-claim: groups
+      groups-autocreate: 0
+      groups-overwrite: 1
+
+  tasks:
+    - name: Install the controller's pinned SOPS binary
+      ansible.builtin.import_tasks: tasks/sops.yml
+
+    - name: Resolve the issuer over vmbr1 on the hypervisor
+      ansible.builtin.blockinfile:
+        path: /etc/hosts
+        marker: "# {mark} ANSIBLE MANAGED AUTHELIA ISSUER"
+        block: 172.28.64.100 auth.greis.dev.br
+
+    - name: Fetch OIDC discovery from the issuer using the system CA store
+      ansible.builtin.uri:
+        url: "{{ oidc_issuer }}/.well-known/openid-configuration"
+        return_content: true
+        follow_redirects: none
+        timeout: 10
+      register: oidc_discovery
+
+    - name: Check issuer, authorization flow and published group scope
+      ansible.builtin.assert:
+        that:
+          - oidc_discovery.json.issuer == oidc_issuer
+          - "'groups' in oidc_discovery.json.scopes_supported"
+          - "'code' in oidc_discovery.json.response_types_supported"
+          - "'S256' in oidc_discovery.json.code_challenge_methods_supported"
+          - "'client_secret_basic' in oidc_discovery.json.token_endpoint_auth_methods_supported"
+
+    - name: Read authentication realms
+      ansible.builtin.command: pveum realm list --output-format json
+      register: pve_realms
+      changed_when: false
+
+    - name: Find the Authelia realm
+      ansible.builtin.set_fact:
+        existing_realms: "{{ pve_realms.stdout | from_json | selectattr('realm', 'equalto', 'authelia') | list }}"
+
+    - name: Check that any existing Authelia realm is OpenID
+      ansible.builtin.assert:
+        that: existing_realms | length == 0 or existing_realms[0].type == 'openid'
+
+    - name: Read the current OIDC realm privately
+      ansible.builtin.command: pvesh get /access/domains/authelia --output-format json
+      when: existing_realms | length > 0
+      register: pve_realm_config
+      changed_when: false
+      no_log: true
+
+    - name: Read the client key from the encrypted identity provider catalog
+      ansible.builtin.command:
+        argv:
+          - /usr/local/bin/sops
+          - decrypt
+          - --extract
+          - '["pve_client_secret"]'
+          - "{{ playbook_dir }}/../../hub/authelia/oidc.sops.yaml"
+      register: pve_client_key
+      changed_when: false
+      no_log: true
+
+    - name: Check the client key and the immutable login claim of an existing realm
+      vars:
+        current: "{{ pve_realm_config.stdout | default('{}') | from_json }}"
+      ansible.builtin.assert:
+        that:
+          - pve_client_key.stdout | length >= 32
+          - not existing_realms or current.get('username-claim') in ['preferred_username', 'username']
+          - current.get('prompt', '') == ''
+      no_log: true
+
+    - name: Read PVE groups and ACLs
+      ansible.builtin.command: "pveum {{ item }} list --output-format json"
+      loop: [group, acl]
+      register: pve_access
+      changed_when: false
+
+    - name: Identify the existing groups and assignments
+      ansible.builtin.set_fact:
+        pve_groups: "{{ pve_access.results[0].stdout | from_json | map(attribute='groupid') | list }}"
+        pve_group_acls: "{{ pve_access.results[1].stdout | from_json | selectattr('type', 'equalto', 'group') | list }}"
+
+    - name: Check for conflicting grants on the managed OIDC groups
+      ansible.builtin.assert:
+        that: item.path == '/' and item.roleid == oidc_group_roles[item.ugid]
+        fail_msg: "Unexpected ACL on managed group {{ item.ugid }} at {{ item.path }}."
+      loop: "{{ pve_group_acls | selectattr('ugid', 'in', oidc_group_roles) | list }}"
+
+    - name: Create missing groups recognized by the realm
+      ansible.builtin.command: "pveum group add {{ item }}"
+      loop: "{{ oidc_group_roles.keys() | difference(pve_groups) | sort }}"
+
+    - name: Grant the declared role at the datacenter root
+      ansible.builtin.command: "pveum acl modify / --groups {{ item.key }} --roles {{ item.value }} --propagate 1"
+      loop: "{{ oidc_group_roles | dict2items }}"
+      when: >-
+        pve_group_acls | selectattr('ugid', 'equalto', item.key)
+        | selectattr('propagate', 'equalto', 1) | list | length == 0
+
+    - name: Reconcile the OpenID realm with the native pveum entry point
+      vars:
+        current: "{{ pve_realm_config.stdout | default('{}') | from_json }}"
+        desired: "{{ oidc_settings | combine({'client-key': pve_client_key.stdout}) }}"
+        operation_options: "{{ {'digest': current.digest} if existing_realms else {'type': 'openid', 'username-claim': 'preferred_username'} }}"
+      ansible.builtin.command:
+        # Use pveum's own parser and locking. Read the key through stdin to keep it out of ps.
+        expand_argument_vars: false
+        argv:
+          - /usr/bin/perl
+          - -MJSON::PP=decode_json
+          - -MPVE::CLI::pveum
+          - -e
+          - |
+            my $settings = decode_json(do { local $/; <STDIN> });
+            push @ARGV, "--$_", $settings->{$_} for sort keys %$settings;
+            PVE::CLI::pveum->run_cli_handler();
+          - '--'
+          - realm
+          - "{{ 'modify' if existing_realms else 'add' }}"
+          - authelia
+        stdin: "{{ desired | combine(operation_options) | to_json }}"
+      when: current | combine(desired) != current
+      no_log: true

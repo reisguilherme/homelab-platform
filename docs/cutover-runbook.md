@@ -11,7 +11,7 @@ Este roteiro executa a transição limpa para `VM 100 (homelab-hub)` + `VM 200 (
 2. **Chave Mestra SOPS/Age e Padronização de Secrets (`root` + `ROOT_PASSWORD`):**
    - Garantir `~/.config/sops/age/keys.txt` na estação de trabalho (backup seguro no gerenciador de senhas, **nunca** nos repositórios) e a respectiva chave pública no `.sops.yaml` dos 3 repositórios.
    - Criar `secrets/*.sops.yaml` a partir dos `*.example.yaml` e criptografar com `sops -e -i`:
-     - **Usuário e senha unificados (`ROOT_USERNAME=root` + `ROOT_PASSWORD`)**: definir a mesma senha em `/opt/homelab-hub/.env` (provisionamento do usuário do Authelia), `mediaserver-secrets.sops.yaml` (`arr-mcp` UI, `bazarr`, referência `qbittorrent` no `arr-mcp`) e `hermes-secrets.sops.yaml`.
+     - As contas web do Hub ficam no [catálogo cifrado de identidades](identidades.md). As credenciais internas de integração dos Spokes ficam em `mediaserver-secrets.sops.yaml` e `hermes-secrets.sops.yaml`.
      - **Chaves arbitrárias (gerar novas aleatórias)**: `RADARR_API_KEY`, `SONARR_API_KEY`, `PROWLARR_API_KEY` e `BAZARR_API_KEY` (32 chars hex cada — injetadas nativamente por env var / `sync-auth`), `ARR_MCP_HERMES_TOKEN` (`amcp_<64 hex>` — idêntico entre `mediaserver` e `hermes`; o `arr-mcp` calcula `sha256:` automaticamente no startup) e `AUTHELIA_*` (64 chars hex).
      - **Chaves externas (não arbitrárias)**: `CF_DNS_API_TOKEN` (Cloudflare), `PVE_METRICS_TOKEN_VALUE` (Proxmox) e `OPENAI_API_KEY` (OpenAI).
      - **Chaves ligadas ao banco migrado (`appdata`)**: `JELLYFIN_API_KEY` e `SEERR_API_KEY` (reaproveitar os valores preservados em `.private-vault/` ou gerar novas chaves na UI após a restauração e atualizar `mediaserver-secrets.sops.yaml`).
@@ -49,7 +49,7 @@ Antes de aplicar o plano que anexa a iGPU, prepare o host pelo checkout de `main
 2. Em `homelab-platform/infrastructure/ansible/`:
    - Preencher `inventory/hosts.yml` (gitignored) e os arquivos privados em `/opt/homelab-hub/.env` na `VM 100`.
    - Rodar `ansible-playbook -i inventory/hosts.yml playbooks/hub.yml`:
-     - O playbook gera `/srv/hub/authelia/users_database.yml` (`0600`) automaticamente para o usuário `root` a partir de `ROOT_PASSWORD` em `/opt/homelab-hub/.env` (caso ainda não exista) e copia `./authelia/configuration.yml` se ausente/preparado conforme `configuration.yml.example`.
+     - O playbook valida o catálogo SOPS e a configuração OIDC, instala os arquivos privados do Authelia com modo `0600` e aguarda a prontidão do serviço. A recuperação das contas segue o [runbook de identidades](identidades.md).
      - Autenticar o Tailscale na `VM 100` (usando o mesmo Tailnet/hostname ou atualizando o IP Tailscale no DNS Cloudflare) e validar Traefik TLS wildcard `*.greis.dev.br`, Authelia e as consultas de métricas e logs descritas no passo 5.
    - Rodar `ansible-playbook -i inventory/hosts.yml playbooks/k3s.yml`:
      - Conferir `/mnt/storage` (18 TB ext4 montado por UUID), `/mnt/transcode` (disco de scratch 48 GiB), `/dev/dri/renderD128`, `RequiresMountsFor` no `k3s.service`, e `flux-system` com a chave `sops-age`.
@@ -76,3 +76,17 @@ Para devolver a iGPU ao host, altere `igpu.auto.tfvars` para `false` e `reserve_
 - [ ] qBittorrent confirma os **733 torrents concluídos em seeding** sem baixar tudo de novo (hardlinks `/data` preservados).
 - [ ] Hermes (`https://hermes.greis.dev.br` e WhatsApp) consulta biblioteca/alertas e completa pedido + preview + download via `arr-mcp` sem erros.
 - [ ] Somente após 100% de aceite: destruir as VMs antigas desligadas (`110`, `111`, `120`, `121`) no NVMe 1, confirmar o agendamento diário de `vzdump` no `nvme-secondary` e descomentar `vaultwarden` em `kubernetes/spokes-registry/kustomization.yaml` para ativar o Spoke #3!
+
+## Login OIDC do Proxmox VE
+
+Após a verificação de isolamento da fase 0 e a ativação do cliente `proxmox` no Authelia, execute no checkout de `main` do controlador, em `infrastructure/ansible/`, `ansible-playbook -i inventory/hosts.yml playbooks/pve-oidc.yml`. O playbook resolve `auth.greis.dev.br` via `172.28.64.100` em `pve01`, valida o documento de discovery por HTTPS e extrai a chave do cliente do catálogo `infrastructure/hub/authelia/oidc.sops.yaml`.
+
+Em `https://proxmox.greis.dev.br`, selecione o realm `authelia` na janela do Proxmox e clique em **Login**. O navegador reutiliza a sessão do Authelia e retorna à origem registrada, `https://proxmox.greis.dev.br`. O login nativo de recuperação continua disponível por `https://192.168.1.20:8006` com `root@pam`. A seleção padrão do realm é preservada. [Integração oficial do Authelia](https://www.authelia.com/integration/openid-connect/clients/proxmox/)
+
+O PVE usa `preferred_username` como identificador e sincroniza os grupos a cada login. A ACL é herdada a partir de `/`. Após um login de cada perfil, confirme as permissões com `pveum user permissions <usuário>@authelia --path /`. Se precisar revogar acesso imediatamente, desabilite a identidade no Authelia e a conta no PVE. [Grupos e permissões no Proxmox VE](https://pve.proxmox.com/pve-docs/pveum.1.html)
+
+| Grupo no Authelia | Grupo no PVE | Papel |
+|---|---|---|
+| `admins` | `admins-authelia` | `PVEAdmin` |
+| `pve-auditors` | `pve-auditors-authelia` | `PVEAuditor` |
+| `homelab-viewers` | `homelab-viewers-authelia` | `PVEAuditor` |

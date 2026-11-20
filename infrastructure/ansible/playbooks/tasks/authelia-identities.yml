@@ -1,0 +1,162 @@
+---
+- name: Validate the encrypted file backend on the controller
+  ansible.builtin.command:
+    argv: [/usr/bin/python3, "{{ playbook_dir }}/../../../scripts/identities.py", validate]
+  delegate_to: localhost
+  changed_when: false
+
+- name: Decrypt the reviewed identity files in memory on the controller
+  ansible.builtin.command:
+    argv: [/usr/local/bin/sops, decrypt, "{{ playbook_dir }}/../../hub/authelia/{{ item }}.sops.yaml"]
+  loop: [users_database, oidc]
+  register: authelia_secrets
+  delegate_to: localhost
+  no_log: true
+  changed_when: false
+
+- name: Create private staging space in Hub tmpfs
+  ansible.builtin.tempfile:
+    state: directory
+    path: /run
+    prefix: homelab-authelia-
+  register: authelia_stage
+
+- name: Validate and publish the Authelia identity configuration
+  vars:
+    candidate: "{{ authelia_stage.path }}"
+    oidc: "{{ authelia_secrets.results[1].stdout | from_yaml }}"
+    identity_files:
+      - { name: configuration.yml, destination: /opt/homelab-hub/authelia/configuration.yml }
+      - { name: users_database.yml, destination: /srv/hub/authelia/users_database.yml }
+  block:
+    - name: Render the OIDC issuer with the client digest
+      ansible.builtin.template:
+        src: authelia-configuration.yml.j2
+        dest: "{{ candidate }}/configuration.yml"
+        mode: "0600"
+      no_log: true
+      diff: false
+
+    - name: Stage the reviewed file backend
+      ansible.builtin.copy:
+        content: "{{ authelia_secrets.results[0].stdout }}\n"
+        dest: "{{ candidate }}/users_database.yml"
+        mode: "0600"
+      no_log: true
+      diff: false
+
+    - name: Validate both candidates with the pinned Authelia release
+      ansible.builtin.command:
+        chdir: /opt/homelab-hub
+        argv:
+          - docker
+          - compose
+          - run
+          - --rm
+          - --no-deps
+          - --volume
+          - "{{ candidate }}/configuration.yml:/config/configuration.yml:ro"
+          - --volume
+          - "{{ candidate }}:/var/lib/authelia:ro"
+          - authelia
+          - authelia
+          - validate-config
+          - --config
+          - /config/configuration.yml
+      changed_when: false
+      no_log: true
+
+    - name: Inspect candidate checksums
+      ansible.builtin.stat:
+        path: "{{ candidate }}/{{ item.name }}"
+        checksum_algorithm: sha256
+        get_mime: false
+      loop: "{{ identity_files }}"
+      register: authelia_candidates
+
+    - name: Check whether the running service acknowledged these files
+      ansible.builtin.copy:
+        content: "{{ authelia_candidates.results | map(attribute='stat.checksum') | join(' ') }}\n"
+        dest: /srv/hub/authelia/.applied-configuration
+        mode: "0600"
+      check_mode: true
+      diff: false
+      register: authelia_pending
+
+    - name: Inspect the installed configuration
+      ansible.builtin.stat:
+        path: "{{ item.destination }}"
+        checksum_algorithm: sha256
+        get_mime: false
+      loop: "{{ identity_files }}"
+      register: authelia_previous
+
+    - name: Preserve existing files in private tmpfs during publication
+      ansible.builtin.copy:
+        src: "{{ item.item.destination }}"
+        dest: "{{ candidate }}/previous-{{ item.item.name }}"
+        remote_src: true
+        mode: "0600"
+      loop: "{{ authelia_previous.results }}"
+      when: item.stat.exists
+      no_log: true
+      diff: false
+
+    - name: Activate the validated identity files
+      block:
+        - name: Publish the file backend and issuer configuration atomically per file
+          ansible.builtin.copy:
+            src: "{{ candidate }}/{{ item.name }}"
+            dest: "{{ item.destination }}"
+            remote_src: true
+            mode: "0600"
+          loop: "{{ identity_files }}"
+          register: authelia_publication
+          no_log: true
+          diff: false
+
+        - name: Recreate the identity provider and wait for health
+          ansible.builtin.command:
+            cmd: docker compose up -d --wait --wait-timeout 90 --no-deps --force-recreate authelia
+            chdir: /opt/homelab-hub
+          when: authelia_pending.changed or authelia_publication.changed
+
+        - name: Record the successfully applied configuration
+          ansible.builtin.copy:
+            content: "{{ authelia_candidates.results | map(attribute='stat.checksum') | join(' ') }}\n"
+            dest: /srv/hub/authelia/.applied-configuration
+            mode: "0600"
+          diff: false
+      rescue:
+        - name: Restore previous files from private tmpfs
+          ansible.builtin.copy:
+            src: "{{ candidate }}/previous-{{ item.item.name }}"
+            dest: "{{ item.item.destination }}"
+            remote_src: true
+            mode: "0600"
+          loop: "{{ authelia_previous.results }}"
+          when: item.stat.exists
+          no_log: true
+          diff: false
+
+        - name: Remove a partially installed file on a new Hub
+          ansible.builtin.file:
+            path: "{{ item.item.destination }}"
+            state: absent
+          loop: "{{ authelia_previous.results }}"
+          when: not item.stat.exists
+
+        - name: Recover the previously configured provider
+          ansible.builtin.command:
+            cmd: docker compose up -d --wait --wait-timeout 90 --no-deps --force-recreate authelia
+            chdir: /opt/homelab-hub
+          when: authelia_previous.results | selectattr('stat.exists') | list | length == 2
+
+        - name: Report the failed reconciliation
+          ansible.builtin.fail:
+            msg: Authelia failed to activate the reviewed configuration. Previous files were restored.
+  always:
+    - name: Release private staging and recovery files
+      ansible.builtin.file:
+        path: "{{ authelia_stage.path }}"
+        state: absent
