@@ -1,0 +1,99 @@
+#!/usr/bin/python3
+"""Read-only storage checks before creating the Gate and staging directories."""
+from pathlib import Path
+import stat
+import subprocess
+import sys
+
+
+GATE = Path("/mnt/gate-4tb")
+GATE_UUID = "58a9af19-1ed0-4488-b08a-c34c35e5ebbf"
+MEDIA = Path("/mnt/storage")
+MEDIA_UUID = "6009892b-5dd8-4068-93a0-c13ac4bbc91b"
+
+
+def output(*args):
+    return subprocess.check_output(args, text=True).strip()
+
+
+def directories(path):
+    for entry in [*reversed(path.parents), path]:
+        try:
+            mode = entry.lstat().st_mode
+        except FileNotFoundError:
+            continue
+        if not stat.S_ISDIR(mode):
+            raise ValueError(f"Expected a real directory: {entry}")
+
+
+def backing(root, uuid, children):
+    mount = output("findmnt", "-rn", "--mountpoint", str(root), "-o", "TARGET,FSTYPE,UUID,FSROOT,OPTIONS").split()
+    if len(mount) != 5 or mount[:4] != [str(root), "ext4", uuid, "/"] or "rw" not in mount[4].split(","):
+        raise ValueError(f"Incorrect backing filesystem or read-only mount at {root}")
+    for child in children:
+        path = root / child
+        directories(path)
+        while not path.exists():
+            path = path.parent
+        if output("findmnt", "-rn", "--target", str(path), "-o", "TARGET") != str(root):
+            raise ValueError(f"Unexpected nested mount: {path}")
+    return set(mount[4].split(","))
+
+
+def gate(require_mount):
+    device = Path("/dev/disk/by-uuid") / GATE_UUID
+    details = output("lsblk", "-dno", "TYPE,FSTYPE,LABEL,UUID,PKNAME", str(device)).split()
+    if len(details) != 5 or details[:4] != ["part", "ext4", "homeserver-media", GATE_UUID]:
+        raise ValueError("Gate partition, filesystem, label or UUID does not match")
+    disk = str(Path("/dev") / details[4])
+    model = output("lsblk", "-dno", "MODEL", disk)
+    if model and model != "ST4000VX000-1F4168":
+        raise ValueError("Unexpected Gate disk model")
+    devices = set(output("lsblk", "-rn", "-o", "MAJ:MIN", disk).splitlines())
+    mounts = [row.split(None, 1) for row in output("findmnt", "-rn", "-o", "MAJ:MIN,TARGET").splitlines()]
+    if any(number in devices and target != str(GATE) for number, target in mounts):
+        raise ValueError("Gate disk is already mounted at a different path")
+    entries = subprocess.run(["findmnt", "--fstab", "--evaluate", "-rn", "-o", "SOURCE,TARGET"],
+                             text=True, stdout=subprocess.PIPE, check=False)
+    if entries.returncode not in (0, 1):
+        raise ValueError("Could not validate existing fstab entries")
+    for row in entries.stdout.splitlines():
+        source, target = row.split(None, 1)
+        same_disk = Path(source).resolve() == device.resolve()
+        if (target == str(GATE)) != same_disk:
+            raise ValueError("Conflicting pre-existing Gate fstab entry")
+    directories(GATE)
+    if any(target == str(GATE) for _, target in mounts):
+        options = backing(GATE, GATE_UUID, ["incoming", "incoming/acervo-amigo-batch"])
+        if require_mount and not {"rw", "noatime", "nosuid", "nodev", "noexec"} <= options:
+            raise ValueError("Gate mount options do not match the declared restrictions")
+        print("mounted")
+    elif require_mount:
+        raise ValueError("Gate filesystem was not mounted")
+    elif GATE.exists() and any(GATE.iterdir()):
+        raise ValueError("Refusing to cover existing files under the Gate mount point")
+    else:
+        print("unmounted")
+
+
+def media(inventory_uuid):
+    if inventory_uuid != MEDIA_UUID:
+        raise ValueError("Unexpected media UUID in the inventory")
+    parent = MEDIA / "homeserver"
+    directories(parent)
+    if not parent.is_dir():
+        raise ValueError("Existing media library directory is missing")
+    staging = "homeserver/.import-staging"
+    backing(MEDIA, MEDIA_UUID, [staging, *(f"{staging}/{kind}" for kind in ("movies", "tv", "torrents"))])
+    print("verified")
+
+
+if __name__ == "__main__":
+    if sys.argv[1:] == ["gate-before"]:
+        gate(False)
+    elif sys.argv[1:] == ["gate-after"]:
+        gate(True)
+    elif len(sys.argv) == 3 and sys.argv[1] == "media":
+        media(sys.argv[2])
+    else:
+        sys.exit("Expected gate-before, gate-after, or media <inventory UUID>")

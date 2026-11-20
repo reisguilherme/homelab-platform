@@ -1,0 +1,72 @@
+---
+- name: Prepare the existing 18 TB filesystem for an approved delivery
+  hosts: k3s_nodes
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Verify the production media UUID and real staging paths
+      ansible.builtin.script:
+        cmd: "files/check-gate-storage media {{ media_hdd_uuid | mandatory | quote }}"
+        executable: /usr/bin/python3
+      changed_when: false
+      check_mode: false
+
+    - name: Prepare staging directories on the verified filesystem
+      ansible.builtin.file:
+        path: "/mnt/storage/homeserver/.import-staging{{ item }}"
+        state: directory
+        owner: "1000"
+        group: "1000"
+        mode: "0755"
+        follow: false
+        recurse: false
+      loop: ["", /movies, /tv, /torrents]
+
+- name: Mount the verified Gate for the active delivery
+  hosts: pve
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Check the Gate device, other mounts and the underlying mount point
+      ansible.builtin.script:
+        cmd: files/check-gate-storage gate-before
+        executable: /usr/bin/python3
+      changed_when: false
+      check_mode: false
+      register: gate_check
+
+    - name: Reconcile the persistent Gate mount by UUID
+      ansible.posix.mount:
+        path: /mnt/gate-4tb
+        src: UUID=58a9af19-1ed0-4488-b08a-c34c35e5ebbf
+        fstype: ext4
+        opts: rw,noatime,nofail,nodev,nosuid,noexec,x-systemd.device-timeout=10s
+        state: mounted
+      notify: Reload systemd mount configuration
+
+    - name: Verify the mounted UUID and destination paths
+      ansible.builtin.script:
+        cmd: files/check-gate-storage gate-after
+        executable: /usr/bin/python3
+      changed_when: false
+      check_mode: false
+      when: not ansible_check_mode or gate_check.stdout | trim == 'mounted'
+
+    - name: Prepare the verified delivery directories
+      ansible.builtin.file:
+        path: "/mnt/gate-4tb/{{ item }}"
+        state: directory
+        owner: "1000"
+        group: "1000"
+        mode: "0755"
+        follow: false
+        recurse: false
+      loop: [incoming, incoming/acervo-amigo-batch]
+      when: not ansible_check_mode or gate_check.stdout | trim == 'mounted'
+
+  handlers:
+    - name: Reload systemd mount configuration
+      ansible.builtin.systemd_service:
+        daemon_reload: true
