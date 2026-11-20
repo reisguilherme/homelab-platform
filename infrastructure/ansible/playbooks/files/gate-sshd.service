@@ -1,0 +1,21 @@
+[Unit]
+Description=Restricted Gate SSH and SFTP on VM 200
+Wants=network-online.target
+After=network-online.target
+RequiresMountsFor=/srv/gate-sftp/drop/batch
+BindsTo=srv-gate\x2dsftp-drop-batch.mount
+After=srv-gate\x2dsftp-drop-batch.mount
+
+[Service]
+ExecStartPre=/usr/bin/mountpoint -q /srv/gate-sftp/drop/batch
+ExecStartPre=/usr/sbin/sshd -t -f /etc/ssh/gate-sshd.conf
+ExecStart=/usr/sbin/sshd -D -e -f /etc/ssh/gate-sshd.conf
+Restart=on-failure
+BindReadOnlyPaths=/proc/uptime:/srv/gate-sftp/diagnostics/uptime
+BindReadOnlyPaths=/proc/loadavg:/srv/gate-sftp/diagnostics/loadavg
+IPAddressDeny=any
+IPAddressAllow=172.28.64.100/32
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target

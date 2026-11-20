@@ -41,6 +41,22 @@ data:
     clients:
       - url: http://172.28.64.100:3100/loki/api/v1/push
     scrape_configs:
+      - job_name: ssh-auth
+        journal:
+          path: /var/log/journal
+          max_age: 24h
+          matches: _COMM=sshd _COMM=sshd-session
+          labels:
+            job: ssh-auth
+            host: homelab-k3s
+        pipeline_stages:
+          - regex:
+              expression: '^(?P<result>Accepted|Failed) [^ ]+ for (?:invalid user )?(?P<user>[a-z_][a-z0-9._-]{0,31}) from (?P<address>[0-9a-fA-F:.]{2,45}) port [0-9]+'
+          - template:
+              source: audit
+              template: '{{ if .result }}{"result":"{{ .result }}","user":"{{ .user }}","address":"{{ .address }}"}{{ else }}{"result":"sshd_event"}{{ end }}'
+          - output:
+              source: audit
       - job_name: kubernetes-pods
         kubernetes_sd_configs:
           - role: pod
@@ -96,6 +112,12 @@ spec:
             - name: varlogpods
               mountPath: /var/log/pods
               readOnly: true
+            - name: journal
+              mountPath: /var/log/journal
+              readOnly: true
+            - name: machine-id
+              mountPath: /etc/machine-id
+              readOnly: true
             - name: run
               mountPath: /run/promtail
       volumes:
@@ -105,5 +127,13 @@ spec:
         - name: varlogpods
           hostPath:
             path: /var/log/pods
+        - name: journal
+          hostPath:
+            path: /var/log/journal
+            type: Directory
+        - name: machine-id
+          hostPath:
+            path: /etc/machine-id
+            type: File
         - name: run
           emptyDir: {}

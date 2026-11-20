@@ -1,0 +1,216 @@
+---
+- name: Check for the managed OpenSSH service
+  ansible.builtin.stat:
+    path: /etc/systemd/system/gate-sshd.service
+  register: installed_gate_service
+
+- name: Close all Gate sessions and release the batch on a closed run
+  when: installed_gate_service.stat.exists and not (gate_access_open | default(false) | bool)
+  block:
+    - name: Stop the dedicated OpenSSH instance
+      ansible.builtin.systemd_service:
+        name: gate-sshd.service
+        state: stopped
+        enabled: false
+    - name: Unmount the delivery batch
+      ansible.builtin.systemd_service:
+        name: "{{ gate_mount_unit }}"
+        state: stopped
+
+- name: Install the NFS client on the guest
+  ansible.builtin.apt:
+    name: nfs-common
+    state: present
+    install_recommends: false
+
+- name: Create the restricted primary groups
+  ansible.builtin.group:
+    name: "{{ item }}"
+    system: true
+  loop: [ssh-sftp-drop, ssh-restricted]
+
+- name: Keep limited accounts out of the administrative OpenSSH service
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/05-gate-deny.conf
+    content: "DenyGroups ssh-sftp-drop ssh-restricted\n"
+    mode: '0644'
+  register: gate_admin_deny
+
+- name: Validate the complete administrative sshd configuration
+  ansible.builtin.command: /usr/sbin/sshd -t
+  changed_when: false
+
+- name: Reload administrative SSH after the access rule changes
+  when: gate_admin_deny.changed
+  ansible.builtin.systemd_service:
+    name: ssh.service
+    state: reloaded
+
+- name: Create root-owned jails and centralized key directory
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - /etc/ssh/gate-keys
+    - "{{ gate_root }}"
+    - "{{ gate_root }}/diagnostics"
+
+- name: Allow only delivery accounts to traverse the drop jail on VM 200
+  ansible.builtin.file:
+    path: "{{ gate_root }}/drop"
+    state: directory
+    owner: root
+    group: ssh-sftp-drop
+    mode: '0750'
+
+- name: Check whether the batch is already mounted
+  ansible.builtin.command: "mountpoint -q {{ gate_root }}/drop/batch"
+  register: gate_mounted
+  changed_when: false
+  failed_when: gate_mounted.rc not in [0, 1, 32]
+
+- name: Create the unwritable underlying mount point
+  when: gate_mounted.rc != 0
+  ansible.builtin.file:
+    path: "{{ gate_root }}/drop/batch"
+    state: directory
+    owner: root
+    group: root
+    mode: '0555'
+
+- name: Locate only the libraries used by the diagnostic shell
+  ansible.builtin.command: ldd /bin/dash
+  register: gate_dash_libs
+  changed_when: false
+  failed_when: gate_dash_libs.rc != 0 or 'not found' in gate_dash_libs.stdout
+
+- name: Select files for the diagnostic jail
+  ansible.builtin.set_fact:
+    gate_diag_files: "{{ ['/bin/dash', '/etc/os-release'] + (gate_dash_libs.stdout | regex_findall('/[^\\s()]+')) }}"
+
+- name: Create destination directories in the diagnostic jail
+  ansible.builtin.file:
+    path: "{{ gate_root }}/diagnostics{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop: "{{ gate_diag_files | map('dirname') | unique | sort }}"
+
+- name: Install only the shell, its dependencies and release metadata
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    remote_src: true
+    dest: "{{ gate_root }}/diagnostics{{ item }}"
+    owner: root
+    group: root
+    mode: preserve
+  loop: "{{ gate_diag_files }}"
+
+- name: Validate the shell and its loader inside the jail
+  ansible.builtin.command:
+    argv: [chroot, "{{ gate_root }}/diagnostics", /bin/dash, -c, 'exit 0']
+  changed_when: false
+
+- name: Prepare the read-only diagnostic mount targets
+  ansible.builtin.file:
+    path: "{{ gate_root }}/diagnostics/{{ item }}"
+    state: touch
+    owner: root
+    group: root
+    mode: '0444'
+    access_time: preserve
+    modification_time: preserve
+  loop: [uptime, loadavg]
+
+- name: Check only the requested account names for collisions
+  ansible.builtin.command:
+    argv: [getent, passwd, "{{ item.name }}"]
+  loop: "{{ gate_accounts }}"
+  register: gate_existing_users
+  changed_when: false
+  failed_when: gate_existing_users.rc not in [0, 2]
+  no_log: true
+
+- name: Protect unrelated accounts from enrollment
+  ansible.builtin.assert:
+    that: >-
+      item.rc == 2 or
+      (item.stdout.split(':')[4] == 'Managed Gate SSH account'
+      and item.stdout.split(':')[2] | int not in [0, 1000]
+      and item.stdout.split(':')[5] == '/')
+  loop: "{{ gate_existing_users.results }}"
+  no_log: true
+
+- name: Create individually attributable accounts without supplementary groups
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    comment: Managed Gate SSH account
+    group: "{{ item.profile }}"
+    groups: ''
+    append: false
+    system: true
+    shell: "{{ '/bin/dash' if item.profile == 'ssh-restricted' else '/usr/sbin/nologin' }}"
+    home: /
+    create_home: false
+    password_lock: true
+  loop: "{{ gate_accounts }}"
+  register: gate_users
+  no_log: true
+
+- name: Install each dedicated public key centrally
+  ansible.builtin.copy:
+    dest: "/etc/ssh/gate-keys/{{ item.name }}"
+    content: "restrict {{ item.key.split()[:2] | join(' ') }}\n"
+    owner: root
+    group: root
+    mode: '0644'
+  loop: "{{ gate_accounts }}"
+  register: gate_keys
+  no_log: true
+
+- name: Find keys from previous enrollments
+  ansible.builtin.find:
+    paths: /etc/ssh/gate-keys
+    file_type: file
+  register: gate_installed_keys
+
+- name: Revoke the keys of identities removed from the catalog
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  when: item.path | basename not in (gate_accounts | map(attribute='name') | list)
+  loop: "{{ gate_installed_keys.files }}"
+  no_log: true
+
+- name: Validate and install the Gate OpenSSH configuration
+  ansible.builtin.template:
+    src: gate-sshd.conf.j2
+    dest: /etc/ssh/gate-sshd.conf
+    mode: '0644'
+    validate: '/usr/sbin/sshd -t -f %s'
+  register: gate_config
+
+- name: Install the private NFSv4 mount with explicit client restrictions
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ gate_mount_unit }}"
+    mode: '0644'
+    content: |
+      [Unit]
+      Description=Gate delivery batch from pve01
+      [Mount]
+      What=172.28.64.1:/mnt/gate-4tb/incoming/acervo-amigo-batch
+      Where=/srv/gate-sftp/drop/batch
+      Type=nfs4
+      Options=vers=4.2,proto=tcp,hard,nosuid,nodev,noexec
+      TimeoutSec=20
+
+- name: Install the isolated OpenSSH service
+  ansible.builtin.copy:
+    src: gate-sshd.service
+    dest: /etc/systemd/system/gate-sshd.service
+    mode: '0644'
+  register: gate_service

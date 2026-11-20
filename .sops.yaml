@@ -1,4 +1,6 @@
 creation_rules:
+  - path_regex: (^|[\\/])infrastructure[\\/]ansible[\\/]gate-accounts\.sops\.yaml$
+    age: age1nct9442jk3wwys45vtsf22qq29g2zgartrsar36smwdamswmacfq8jway0
   - path_regex: (^|[\\/])infrastructure[\\/]hub[\\/]authelia[\\/](users_database|oidc)\.sops\.yaml$
     age: age1nct9442jk3wwys45vtsf22qq29g2zgartrsar36smwdamswmacfq8jway0
   - path_regex: (^|[\\/])secrets[\\/].*\.sops\.ya?ml$

@@ -1,0 +1,156 @@
+---
+- name: Read the authorized Gate identities on the controller
+  hosts: pve
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Check the access mode and Tailnet policy acceptance
+      ansible.builtin.assert:
+        that:
+          - not (gate_access_open | default(false) | bool) or (gate_tailnet_policy_verified | default(false) | bool)
+        fail_msg: Verify the Tailnet port grants and negative policy tests before opening the listener.
+
+    - name: Read the Gate account catalog when opening access
+      when: gate_access_open | default(false) | bool
+      block:
+        - name: Install pinned SOPS
+          ansible.builtin.import_tasks: tasks/sops.yml
+
+        - name: Decrypt the account list in memory
+          ansible.builtin.command:
+            argv: [/usr/local/bin/sops, decrypt, --output-type, json, "{{ playbook_dir }}/../gate-accounts.sops.yaml"]
+          register: gate_catalog
+          changed_when: false
+          no_log: true
+
+    - name: Select the accounts declared for this opening
+      ansible.builtin.set_fact:
+        gate_authorized: "{{ (gate_catalog.stdout | from_json).accounts if gate_access_open | default(false) | bool else [] }}"
+      no_log: true
+
+    - name: Validate distinct account names and access profiles
+      ansible.builtin.assert:
+        that:
+          - gate_authorized is sequence and gate_authorized is not string and gate_authorized is not mapping
+          - not (gate_access_open | default(false) | bool) or gate_authorized | length > 0
+          - gate_authorized | map(attribute='name') | unique | length == gate_authorized | length
+      no_log: true
+
+    - name: Validate the dedicated Ed25519 key and the account profile
+      ansible.builtin.assert:
+        that:
+          - item.name is match('^[a-z][a-z0-9_-]{0,31}\Z')
+          - item.name not in ['root', 'ubuntu', 'nobody']
+          - item.profile in ['ssh-sftp-drop', 'ssh-restricted']
+          - item.key is match('^ssh-ed25519 [A-Za-z0-9+/]+={0,2}(?:[ \t]+[^\r\n]*)?\Z')
+      loop: "{{ gate_authorized }}"
+      no_log: true
+
+    - name: Require a different public key for each account
+      ansible.builtin.assert:
+        that: gate_authorized | map(attribute='key') | map('split') | map(attribute=1) | unique | length == gate_authorized | length
+      no_log: true
+
+    - name: Parse each key with OpenSSH before changing access
+      ansible.builtin.command:
+        argv: [ssh-keygen, -l, -f, /dev/stdin]
+        stdin: "{{ item.key.split()[:2] | join(' ') }}"
+      loop: "{{ gate_authorized }}"
+      changed_when: false
+      no_log: true
+
+- name: Close the Hub socket and existing transport sessions before withdrawing access
+  hosts: hub
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Check for the managed relay
+      ansible.builtin.stat:
+        path: /etc/systemd/system/gate-relay.socket
+      register: gate_relay
+
+    - name: Close the Gate relay
+      when: not (gate_access_open | default(false) | bool) and gate_relay.stat.exists
+      block:
+        - name: Close the listener at boot and at runtime
+          ansible.builtin.systemd_service:
+            name: gate-relay.socket
+            enabled: false
+            state: stopped
+        - name: Close established forwarded connections
+          ansible.builtin.systemd_service:
+            name: gate-relay.service
+            state: stopped
+
+- name: Prepare the VM 200 jails and OpenSSH configuration
+  hosts: k3s_nodes
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  vars:
+    gate_accounts: "{{ hostvars[groups['pve'][0]].gate_authorized }}"
+    gate_root: /srv/gate-sftp
+    gate_mount_unit: 'srv-gate\x2dsftp-drop-batch.mount'
+  tasks:
+    - name: Prepare Gate accounts, chroots and the dedicated daemon
+      ansible.builtin.import_tasks: tasks/gate-ssh.yml
+
+- name: Publish only the verified Gate batch to VM 200
+  hosts: pve
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Configure the NFSv4 batch export
+      ansible.builtin.import_tasks: tasks/gate-export.yml
+
+- name: Start the dedicated jails only after publication of the export
+  hosts: k3s_nodes
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Start the isolated OpenSSH instance with its NFS mount
+      when: gate_access_open | default(false) | bool
+      ansible.builtin.systemd_service:
+        name: gate-sshd.service
+        enabled: true
+        state: "{{ 'restarted' if gate_config.changed or gate_service.changed or gate_keys.changed or gate_users.changed else 'started' }}"
+        daemon_reload: true
+
+    - name: Verify effective write access as each delivery user
+      ansible.builtin.command:
+        argv: [runuser, -u, "{{ item.name }}", --, test, -w, /srv/gate-sftp/drop/batch]
+      loop: "{{ hostvars[groups['pve'][0]].gate_authorized | selectattr('profile', 'equalto', 'ssh-sftp-drop') | list }}"
+      changed_when: false
+      no_log: true
+
+- name: Bind the Gate relay exclusively to the Hub Tailscale interface
+  hosts: hub
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Install the socket and systemd TCP relay
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "/etc/systemd/system/{{ item }}"
+        mode: '0644'
+      loop: [gate-relay.socket, gate-relay.service]
+
+    - name: Verify the expected Tailscale address
+      when: gate_access_open | default(false) | bool
+      ansible.builtin.command: tailscale ip -4
+      register: gate_tail_address
+      changed_when: false
+      failed_when: gate_tail_address.rc != 0 or gate_tail_address.stdout | trim != '100.109.244.123'
+
+    - name: Enable the verified Gate listener
+      when: gate_access_open | default(false) | bool
+      ansible.builtin.systemd_service:
+        name: gate-relay.socket
+        daemon_reload: true
+        enabled: true
+        state: started

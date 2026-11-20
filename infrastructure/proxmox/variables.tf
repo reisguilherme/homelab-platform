@@ -73,6 +73,12 @@ variable "lan_management_cidrs" {
   default     = ["192.168.1.0/24", "100.64.0.0/10"]
 }
 
+variable "gate_delivery_network_enabled" {
+  description = "Allow the private NFSv4 batch export and the Hub to VM 200 Gate SSH transport"
+  type        = bool
+  default     = false
+}
+
 variable "lan_tv_cidrs" {
   description = "Local home LAN CIDR allowed to reach LAN TV Jellyfin listener on port 8096"
   type        = list(string)

@@ -1,0 +1,29 @@
+Port 2222
+ListenAddress 172.28.64.200
+HostKey /etc/ssh/ssh_host_ed25519_key
+PidFile /run/gate-sshd.pid
+UsePAM yes
+PermitRootLogin no
+AuthenticationMethods publickey
+PubkeyAuthentication yes
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+AuthorizedKeysFile /etc/ssh/gate-keys/%u
+AllowGroups ssh-sftp-drop ssh-restricted
+AllowUsers {% for account in gate_accounts %}{{ account.name }}@172.28.64.100 {% else %}gate-unassigned@172.28.64.100{% endfor %}
+
+DisableForwarding yes
+X11Forwarding no
+PermitTunnel no
+PermitTTY no
+PermitUserRC no
+PermitUserEnvironment no
+LogLevel VERBOSE
+Subsystem sftp internal-sftp
+
+Match Group ssh-sftp-drop
+    ChrootDirectory /srv/gate-sftp/drop
+    ForceCommand internal-sftp -d /batch -u 0027
+
+Match Group ssh-restricted
+    ChrootDirectory /srv/gate-sftp/diagnostics

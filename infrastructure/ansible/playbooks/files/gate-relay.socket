@@ -1,0 +1,11 @@
+[Unit]
+Description=Gate SSH on the Hub Tailscale address
+After=tailscaled.service
+
+[Socket]
+ListenStream=100.109.244.123:2222
+BindToDevice=tailscale0
+FreeBind=yes
+
+[Install]
+WantedBy=sockets.target

@@ -1,0 +1,12 @@
+[Unit]
+Description=Forward Gate SSH to VM 200
+Requires=gate-relay.socket
+After=gate-relay.socket
+
+[Service]
+ExecStart=/usr/lib/systemd/systemd-socket-proxyd 172.28.64.200:2222
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes

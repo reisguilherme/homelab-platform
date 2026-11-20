@@ -1,0 +1,96 @@
+---
+- name: Check for the host export utility
+  ansible.builtin.stat:
+    path: /usr/sbin/exportfs
+  register: gate_exportfs
+
+- name: Withdraw the export after clients have disconnected
+  when: not (gate_access_open | default(false) | bool) and gate_exportfs.stat.exists
+  block:
+    - name: Remove the managed export declaration
+      ansible.builtin.file:
+        path: /etc/exports.d/homelab-gate.exports
+        state: absent
+    - name: Check the active export table after removing the declaration
+      ansible.builtin.command: exportfs -s
+      changed_when: false
+      register: gate_active_exports
+    - name: Withdraw the managed export if still active
+      ansible.builtin.command: exportfs -u 172.28.64.200:/mnt/gate-4tb/incoming/acervo-amigo-batch
+      when: gate_active_exports.stdout is search('(?m)^/mnt/gate-4tb/incoming/acervo-amigo-batch\s+172\.28\.64\.200\(')
+
+- name: Serve the single approved batch on the guest bridge
+  when: gate_access_open | default(false) | bool
+  vars:
+    gate_batch_path: /mnt/gate-4tb/incoming/acervo-amigo-batch
+  block:
+    - name: Obtain the batch's backing mount and UUID
+      ansible.builtin.command:
+        argv: [findmnt, --noheadings, --target, "{{ gate_batch_path }}", --output, 'TARGET,FSTYPE,UUID']
+      changed_when: false
+      register: gate_backing
+
+    - name: Resolve the exact path of the existing batch
+      ansible.builtin.command:
+        argv: [realpath, -e, "{{ gate_batch_path }}"]
+      changed_when: false
+      register: gate_realpath
+
+    - name: Read batch directory ownership
+      ansible.builtin.stat:
+        path: "{{ gate_batch_path }}"
+        get_checksum: false
+      register: gate_batch
+
+    - name: Require the designated ext4 disk and an existing UID 1000 batch
+      ansible.builtin.assert:
+        that:
+          - gate_realpath.stdout == gate_batch_path
+          - gate_backing.stdout.split() == ['/mnt/gate-4tb', 'ext4', '58a9af19-1ed0-4488-b08a-c34c35e5ebbf']
+          - gate_batch.stat.isdir and gate_batch.stat.uid == 1000 and gate_batch.stat.gid == 1000
+
+    - name: Install NFS without starting default network listeners
+      ansible.builtin.apt:
+        name: nfs-kernel-server
+        state: present
+        install_recommends: false
+        policy_rc_d: 101
+
+    - name: Prepare NFS configuration directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      loop: [/etc/nfs.conf.d, /etc/exports.d]
+
+    - name: Bind NFSv4 to the guest bridge and turn off NFSv3 and UDP
+      ansible.builtin.copy:
+        dest: /etc/nfs.conf.d/90-homelab-gate.conf
+        mode: '0644'
+        content: |
+          [nfsd]
+          host=172.28.64.1
+          vers3=n
+          vers4=y
+          tcp=y
+          udp=n
+      register: gate_nfs_config
+
+    - name: Export only the batch while its parent is a mount point
+      ansible.builtin.copy:
+        dest: /etc/exports.d/homelab-gate.exports
+        mode: '0644'
+        content: |
+          {{ gate_batch_path }} 172.28.64.200(rw,sync,subtree_check,root_squash,all_squash,anonuid=1000,anongid=1000,mountpoint=/mnt/gate-4tb)
+
+    - name: Start the private NFSv4 server
+      ansible.builtin.systemd_service:
+        name: nfs-server.service
+        enabled: true
+        state: "{{ 'restarted' if gate_nfs_config.changed else 'started' }}"
+
+    - name: Reconcile the kernel export table
+      ansible.builtin.command: exportfs -ra
+      changed_when: false
