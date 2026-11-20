@@ -81,7 +81,6 @@
         - /srv/hub/traefik/logs
         - /srv/hub/authelia
         - /srv/hub/prometheus
-        - /srv/hub/grafana
         - /srv/hub/loki
         - /srv/hub/alertmanager
 
@@ -94,7 +93,6 @@
         mode: "0755"
       loop:
         - { path: /srv/hub/prometheus, uid: "65534", gid: "65534" }
-        - { path: /srv/hub/grafana, uid: "472", gid: "472" }
         - { path: /srv/hub/loki, uid: "10001", gid: "10001" }
 
     - name: Synchronize declarative Hub Compose stack
@@ -202,6 +200,26 @@
       environment:
         TRAEFIK_CONFIG_SHA: "{{ lookup('ansible.builtin.file', '../../hub/traefik/traefik.yml', rstrip=false) | hash('sha256') }}"
       when: hub_env.stat.exists
+
+    - name: Clean up Grafana after Compose has removed the orphan container
+      when: hub_env.stat.exists
+      block:
+        - name: Remove retired Grafana data and provisioning
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - /srv/hub/grafana
+            - /opt/homelab-hub/observability/grafana
+
+        - name: Check for the retired Grafana image
+          ansible.builtin.command: docker image ls -q grafana/grafana:11.6.0
+          register: grafana_image
+          changed_when: false
+
+        - name: Remove the retired Grafana image
+          ansible.builtin.command: docker image rm grafana/grafana:11.6.0
+          when: grafana_image.stdout | trim | length > 0
 
     - name: Recreate hub-authelia when declarative configuration changes
       ansible.builtin.command:

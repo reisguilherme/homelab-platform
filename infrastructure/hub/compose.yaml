@@ -163,32 +163,6 @@ services:
         max-size: "5m"
         max-file: "2"
 
-  grafana:
-    image: grafana/grafana:11.6.0
-    container_name: hub-grafana
-    restart: unless-stopped
-    user: "472:472"
-    environment:
-      GF_SECURITY_ADMIN_USER: ${ROOT_USERNAME:-root}
-      GF_SECURITY_ADMIN_PASSWORD: ${ROOT_PASSWORD:?Set unified ROOT_PASSWORD}
-      GF_SERVER_ROOT_URL: https://grafana.greis.dev.br
-      GF_AUTH_ANONYMOUS_ENABLED: "false"
-      GF_USERS_ALLOW_SIGN_UP: "false"
-      GF_SECURITY_COOKIE_SECURE: "true"
-      GF_SECURITY_COOKIE_SAMESITE: strict
-    ports:
-      - "127.0.0.1:3002:3000"
-    volumes:
-      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
-      - /srv/hub/grafana:/var/lib/grafana
-    networks:
-      - hub_net
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
 networks:
   hub_net:
     driver: bridge

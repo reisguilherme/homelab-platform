@@ -7,7 +7,7 @@ Este repositório define a **Camada 0 (Proxmox VE)** e a **Camada 1 (HUB — `VM
 - **O que pertence aqui:**
   - `infrastructure/proxmox/`: OpenTofu declarativo das VMs `100` (`homelab-hub`) e `200` (`homelab-k3s`), firewall do host Proxmox e VMs, mapeamentos USB/PCI (HD 18 TB + iGPU Intel QuickSync) e backups diários `vzdump` no `nvme-secondary`.
   - `infrastructure/ansible/`: Playbooks idempotentes para Ubuntu 24.04 (`hub` com Docker + Tailscale; `k3s` com mounts UUID via `systemd RequiresMountsFor`, `/dev/dri`, K3s, `sops-age` e `flux bootstrap`).
-  - `infrastructure/hub/`: Stack Docker Compose da `VM 100 homelab-hub` (Traefik com ACME Cloudflare DNS-01 `*.greis.dev.br`, CoreDNS Split-DNS, Authelia SSO, Prometheus + Grafana + Loki + Alertmanager).
+  - `infrastructure/hub/`: Stack Docker Compose da `VM 100 homelab-hub` (Traefik com ACME Cloudflare DNS-01 `*.greis.dev.br`, CoreDNS Split-DNS, Authelia SSO, Prometheus + Loki + Promtail + Alertmanager).
   - `kubernetes/`: Bootstrap FluxCD (`clusters/homelab/`), agentes de observabilidade e `prometheus-mcp` (`platform/`), registro de Spokes (`spokes-registry/`) e blueprint `templates/spoke-starter/`.
   - `docs/`: ADRs (`docs/adr/`) e runbook de cutover (`docs/cutover-runbook.md`).
 - **O que é PROIBIDO aqui:**

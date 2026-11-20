@@ -6,12 +6,6 @@ http:
       middlewares: ["private-network-only", "security-headers"]
       service: authelia-svc
 
-    hub-grafana:
-      rule: "Host(`grafana.greis.dev.br`)"
-      entryPoints: ["websecure"]
-      middlewares: ["private-network-only", "sso-auth", "security-headers"]
-      service: grafana-svc
-
     hub-proxmox:
       rule: "Host(`proxmox.greis.dev.br`)"
       entryPoints: ["websecure"]
@@ -23,11 +17,6 @@ http:
       loadBalancer:
         servers:
           - url: "http://127.0.0.1:9091"
-
-    grafana-svc:
-      loadBalancer:
-        servers:
-          - url: "http://127.0.0.1:3002"
 
     proxmox-svc:
       loadBalancer:
