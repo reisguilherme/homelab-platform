@@ -134,6 +134,11 @@
     gate_root: /srv/gate-sftp
     gate_mount_unit: 'srv-gate\x2dsftp-drop-batch.mount'
   tasks:
+    - name: Protect the cluster admin credential before provisioning Gate identities
+      ansible.builtin.import_tasks: tasks/k3s-kubeconfig.yml
+      when: gate_prepare_accounts | default(false) | bool or gate_access_open | default(false) | bool
+      tags: [kubeconfig_permissions]
+
     - name: Prepare Gate accounts, chroots and the dedicated daemon
       ansible.builtin.import_tasks: tasks/gate-ssh.yml
 

@@ -133,7 +133,7 @@
         set -euo pipefail
         if ! command -v k3s >/dev/null 2>&1; then
           curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="{{ k3s_version }}" sh -s - server \
-            --write-kubeconfig-mode 0644 \
+            --write-kubeconfig-mode 0600 \
             --tls-san "{{ ansible_host }}"
         fi
       args:
@@ -146,6 +146,10 @@
         enabled: true
         state: started
         daemon_reload: true
+
+    - name: Enforce root-only access to the cluster admin kubeconfig
+      ansible.builtin.import_tasks: tasks/k3s-kubeconfig.yml
+      tags: [kubeconfig_permissions]
 
     - name: Install pinned Flux CLI compatible with K3s version
       ansible.builtin.shell: |

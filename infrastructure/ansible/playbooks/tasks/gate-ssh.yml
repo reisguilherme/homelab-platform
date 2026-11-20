@@ -146,6 +146,13 @@
   register: gate_users
   no_log: true
 
+- name: Verify each Gate user cannot read the cluster admin kubeconfig outside the jail
+  ansible.builtin.command:
+    argv: [runuser, -u, "{{ item.name }}", --, test, '!', -r, /etc/rancher/k3s/k3s.yaml]
+  loop: "{{ gate_accounts }}"
+  changed_when: false
+  no_log: true
+
 - name: Install each dedicated public key centrally
   ansible.builtin.copy:
     dest: "/etc/ssh/gate-keys/{{ item.name }}"
