@@ -68,26 +68,6 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  homepage:
-    image: ghcr.io/gethomepage/homepage:v0.10.9
-    container_name: hub-homepage
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    environment:
-      HOMEPAGE_ALLOWED_HOSTS: homelab.greis.dev.br
-    ports:
-      - "127.0.0.1:3001:3000"
-    volumes:
-      - /srv/hub/homepage:/app/config
-    networks:
-      - hub_net
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "2"
-
   prometheus:
     image: prom/prometheus:v3.2.1
     container_name: hub-prometheus
