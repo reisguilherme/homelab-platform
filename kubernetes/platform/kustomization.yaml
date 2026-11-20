@@ -6,3 +6,4 @@ resources:
   - observability/promtail.yaml
   - observability/kube-state-metrics.yaml
   - observability/prometheus-mcp.yaml
+  - traefik.yaml
