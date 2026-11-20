@@ -66,6 +66,9 @@ scrape_configs:
       - match:
           selector: '{container="hub-authelia"}'
           stages:
+            - template:
+                source: safe_record
+                template: '{"level":"error","msg":"Unclassified Authelia diagnostic","source_net":"Desconhecida"}'
             - json:
                 expressions:
                   message: msg
@@ -80,16 +83,16 @@ scrape_configs:
             - template:
                 source: safe_record
                 template: >-
-                  {{- $msg := default "" .message -}}
-                  {{- $level := default "info" .severity -}}
+                  {{- $msg := default "" .message | toString -}}
+                  {{- $level := default "info" .severity | toString -}}
                   {{- if not (regexMatch "^(trace|debug|info|warning|warn|error|fatal|panic)$" $level) }}{{ $level = "unknown" }}{{ end -}}
-                  {{- $time := default "" .occurred -}}
+                  {{- $time := default "" .occurred | toString -}}
                   {{- if not (regexMatch "^[0-9T:.Z+-]{19,40}$" $time) }}{{ $time = "" }}{{ end -}}
-                  {{- $path := default "" .endpoint -}}
+                  {{- $path := default "" .endpoint | toString -}}
                   {{- if not (regexMatch "^(/api/(firstfactor|secondfactor/(totp|webauthn|duo)|authz/forward-auth|oidc/(authorization|token|userinfo|jwks))|/[.]well-known/openid-configuration)$" $path) }}{{ $path = "" }}{{ end -}}
-                  {{- $method := default "" .verb -}}
+                  {{- $method := default "" .verb | toString -}}
                   {{- if not (regexMatch "^(GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS)$" $method) }}{{ $method = "" }}{{ end -}}
-                  {{- $address := default "" .address -}}
+                  {{- $address := default "" .address | toString -}}
                   {{- $net := "Desconhecida" -}}
                   {{- if regexMatch "^(100[.](6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])[.]|fd7a:115c:a1e0:)" $address }}{{ $net = "Tailscale" -}}
                   {{- else if regexMatch "^192[.]168[.]1[.]" $address }}{{ $net = "LAN" -}}
