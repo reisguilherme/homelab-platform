@@ -4,6 +4,8 @@ services:
   traefik:
     image: traefik:v3.3
     container_name: hub-traefik
+    labels:
+      homelab.greis.dev.br/static-config: ${TRAEFIK_CONFIG_SHA:-local}
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true

@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+states=$(docker ps -a --filter label=com.docker.compose.project=homelab-hub \
+  --filter label=com.docker.compose.oneoff=False --format '{{.State}}')
+printf '%s\n' "$states" | awk '
+  NF { total++ }
+  $1 == "running" { running++ }
+  END {
+    print "# HELP hub_containers_running Running containers of the Hub Compose project."
+    print "# TYPE hub_containers_running gauge"
+    print "hub_containers_running", running+0
+    print "# HELP hub_containers_total Existing containers of the Hub Compose project."
+    print "# TYPE hub_containers_total gauge"
+    print "hub_containers_total", total+0
+  }'

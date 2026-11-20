@@ -41,6 +41,11 @@
              or exporter_listen_address not in exporter_sockets.stdout else 'started' }}
       when: not (ansible_check_mode and exporter_package.changed)
 
+    - name: Collect physical host metrics with systemd
+      ansible.builtin.import_tasks: tasks/textfile.yml
+      vars:
+        metric_source: pve-host
+
 - name: Provision the cloud-init vendor data used by the Hub and K3s VMs
   hosts: pve
   become: true

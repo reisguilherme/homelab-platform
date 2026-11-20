@@ -4,7 +4,11 @@ metadata:
   name: spoke-vaultwarden
   labels:
     app.kubernetes.io/part-of: spoke-vaultwarden
+    homelab.greis.dev.br/spoke: "true"
     pod-security.kubernetes.io/enforce: baseline
+  annotations:
+    homeship.greis.dev.br/title: Vaultwarden
+    homeship.greis.dev.br/icon: lock
 ---
 apiVersion: v1
 kind: ResourceQuota
