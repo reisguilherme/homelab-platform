@@ -5,6 +5,10 @@
   gather_facts: false
   any_errors_fatal: true
   tasks:
+    - name: Leave the media filesystem alone during Gate standby
+      ansible.builtin.meta: end_play
+      when: (gate_storage_standby | default(false) | string | lower) != 'false'
+
     - name: Verify the production media UUID and real staging paths
       ansible.builtin.script:
         cmd: "files/check-gate-storage media {{ media_hdd_uuid | mandatory | quote }}"
@@ -23,15 +27,46 @@
         recurse: false
       loop: ["", /movies, /tv, /torrents]
 
-- name: Mount the verified Gate for the active delivery
+- name: Reconcile the mounted or standby state of the verified Gate
   hosts: pve
   become: true
   gather_facts: false
   any_errors_fatal: true
   tasks:
+    - name: Require an explicit boolean storage mode
+      ansible.builtin.assert:
+        that:
+          - (gate_storage_standby | default(false) | string | lower) in ['true', 'false']
+          - not (gate_storage_standby | default(false) | bool) or not (gate_access_open | default(false) | bool)
+
+    - name: Require a closed delivery before entering standby
+      when: gate_storage_standby | default(false) | bool
+      block:
+        - name: Verify the delivery services are inactive
+          ansible.builtin.command:
+            argv: [systemctl, show, --property=ActiveState, --value, "{{ item.unit }}"]
+          delegate_to: "{{ item.host }}"
+          loop:
+            - {host: "{{ groups['hub'] | first }}", unit: gate-relay.socket}
+            - {host: "{{ groups['hub'] | first }}", unit: gate-relay.service}
+            - {host: "{{ groups['k3s_nodes'] | first }}", unit: gate-sshd.service}
+          register: gate_delivery_service
+          changed_when: false
+          failed_when: gate_delivery_service.rc != 0 or gate_delivery_service.stdout | trim != 'inactive'
+          check_mode: false
+
+        - name: Verify the batch has been released on the guest
+          ansible.builtin.command:
+            argv: [findmnt, --noheadings, --mountpoint, /srv/gate-sftp/drop/batch]
+          delegate_to: "{{ groups['k3s_nodes'] | first }}"
+          register: gate_guest_mount
+          changed_when: false
+          failed_when: gate_guest_mount.rc != 1
+          check_mode: false
+
     - name: Check the Gate device, other mounts and the underlying mount point
       ansible.builtin.script:
-        cmd: files/check-gate-storage gate-before
+        cmd: "files/check-gate-storage {{ 'gate-standby' if gate_storage_standby | default(false) | bool else 'gate-before' }}"
         executable: /usr/bin/python3
       changed_when: false
       check_mode: false
@@ -43,8 +78,22 @@
         src: UUID=58a9af19-1ed0-4488-b08a-c34c35e5ebbf
         fstype: ext4
         opts: rw,noatime,nofail,nodev,nosuid,noexec,x-systemd.device-timeout=10s
-        state: mounted
+        state: "{{ 'present' if gate_storage_standby | default(false) | bool else 'mounted' }}"
       notify: Reload systemd mount configuration
+
+    - name: Release the filesystem using a normal unmount
+      ansible.builtin.command:
+        argv: [umount, --, /mnt/gate-4tb]
+      when: gate_storage_standby | default(false) | bool and gate_check.stdout | trim == 'mounted'
+
+    - name: Check the idle device and the underlying empty directory
+      ansible.builtin.script:
+        cmd: files/check-gate-storage gate-standby
+        executable: /usr/bin/python3
+      register: gate_standby_check
+      changed_when: false
+      failed_when: gate_standby_check.rc != 0 or gate_standby_check.stdout | trim != 'unmounted'
+      when: gate_storage_standby | default(false) | bool and not ansible_check_mode
 
     - name: Verify the mounted UUID and destination paths
       ansible.builtin.script:
@@ -52,7 +101,9 @@
         executable: /usr/bin/python3
       changed_when: false
       check_mode: false
-      when: not ansible_check_mode or gate_check.stdout | trim == 'mounted'
+      when:
+        - not (gate_storage_standby | default(false) | bool)
+        - not ansible_check_mode or gate_check.stdout | trim == 'mounted'
 
     - name: Prepare the verified delivery directories
       ansible.builtin.file:
@@ -64,7 +115,9 @@
         follow: false
         recurse: false
       loop: [incoming, incoming/acervo-amigo-batch]
-      when: not ansible_check_mode or gate_check.stdout | trim == 'mounted'
+      when:
+        - not (gate_storage_standby | default(false) | bool)
+        - not ansible_check_mode or gate_check.stdout | trim == 'mounted'
 
   handlers:
     - name: Reload systemd mount configuration

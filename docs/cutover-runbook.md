@@ -71,6 +71,7 @@ Para devolver a iGPU ao host, altere `igpu.auto.tfvars` para `false` e `reserve_
 
 - [ ] `https://auth.greis.dev.br` e `https://homelab.greis.dev.br` respondem com TLS automático Cloudflare válido e SSO Authelia ativo.
 - [ ] Na VM 100, `curl -fsSG http://172.28.64.100:9090/api/v1/query --data-urlencode 'query=up{job=~"pve|pve-host|nodes"}'` retorna `1` para o exporter do Proxmox, o host e ambas as VMs.
+- [ ] Com a entrega encerrada, confirmar no Deck 01 o Gate conectado e desmontado e depois restaurar a montagem com o [procedimento de standby do Gate](gate-access.md#conferir-o-gate-desmontado-no-homeship).
 - [ ] Na VM 100, `curl -fsSG http://172.28.64.100:3100/loki/api/v1/query_range --data-urlencode 'query={job="traefik"}' --data 'since=5m' --data 'limit=1'` retorna um evento recente após um acesso ao HomeShip. Confira o mesmo fluxo no Loki Explorer do portal.
 - [ ] `https://jellyfin.greis.dev.br/` e `http://<IP-LAN-HUB>:8096/` reproduzem vídeo com tema Abyss, mídia RO e transcode QuickSync `/dev/dri`.
 - [ ] qBittorrent confirma os **733 torrents concluídos em seeding** sem baixar tudo de novo (hardlinks `/data` preservados).

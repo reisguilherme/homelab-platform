@@ -40,7 +40,28 @@ def backing(root, uuid, children):
     return set(mount[4].split(","))
 
 
-def gate(require_mount):
+def require_closed_exports():
+    if Path("/etc/exports.d/homelab-gate.exports").exists():
+        raise ValueError("Close the managed Gate export before standby")
+    listings = []
+    exportfs = Path("/usr/sbin/exportfs")
+    if exportfs.exists():
+        listings.append(output(str(exportfs), "-s"))
+    for table in [Path("/proc/fs/nfsd/exports"), Path("/var/lib/nfs/etab")]:
+        if table.exists():
+            listings.append(table.read_text())
+    for listing in listings:
+        for line in listing.splitlines():
+            fields = line.split()
+            if fields and not fields[0].startswith("#"):
+                exported = Path(fields[0])
+                if not exported.is_absolute():
+                    raise ValueError("Unrecognized NFS export table")
+                if exported == GATE or GATE in exported.parents or exported in GATE.parents:
+                    raise ValueError("An NFS export still covers the Gate filesystem")
+
+
+def gate(require_mount, standby=False):
     device = Path("/dev/disk/by-uuid") / GATE_UUID
     details = output("lsblk", "-dno", "TYPE,FSTYPE,LABEL,UUID,PKNAME", str(device)).split()
     if len(details) != 5 or details[:4] != ["part", "ext4", "homeserver-media", GATE_UUID]:
@@ -53,6 +74,10 @@ def gate(require_mount):
     mounts = [row.split(None, 1) for row in output("findmnt", "-rn", "-o", "MAJ:MIN,TARGET").splitlines()]
     if any(number in devices and target != str(GATE) for number, target in mounts):
         raise ValueError("Gate disk is already mounted at a different path")
+    if standby:
+        if any(GATE in Path(target).parents for _, target in mounts):
+            raise ValueError("Another filesystem is mounted beneath the Gate")
+        require_closed_exports()
     entries = subprocess.run(["findmnt", "--fstab", "--evaluate", "-rn", "-o", "SOURCE,TARGET"],
                              text=True, stdout=subprocess.PIPE, check=False)
     if entries.returncode not in (0, 1):
@@ -93,7 +118,9 @@ if __name__ == "__main__":
         gate(False)
     elif sys.argv[1:] == ["gate-after"]:
         gate(True)
+    elif sys.argv[1:] == ["gate-standby"]:
+        gate(False, standby=True)
     elif len(sys.argv) == 3 and sys.argv[1] == "media":
         media(sys.argv[2])
     else:
-        sys.exit("Expected gate-before, gate-after, or media <inventory UUID>")
+        sys.exit("Expected gate-before, gate-after, gate-standby, or media <inventory UUID>")

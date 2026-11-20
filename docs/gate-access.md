@@ -51,3 +51,11 @@ No checkout revisado de `main` em `pve01`, no diretório `infrastructure/ansible
 ## Revogar ou encerrar
 
 Para revogação individual, retire a pessoa do grupo do Tailnet e do catálogo cifrado e reconcilie o playbook com o conjunto atualizado. Para encerrar a entrega, execute o playbook no estado padrão. Ele para o socket e conexões do relay, encerra o OpenSSH de entrega, desmonta o lote e retira o export. Desative as duas regras de OpenTofu e retire o grant temporário do Tailnet. Os arquivos do lote permanecem no disco.
+
+## Conferir o Gate desmontado no HomeShip
+
+Faça esta verificação entre entregas, com o disco conectado ao PVE e o lote em quarentena. Execute os comandos a partir de `infrastructure/ansible` no controlador com o inventário de produção.
+
+1. Após encerrar o acesso conforme a seção anterior, execute `ansible-playbook -i inventory/hosts.yml playbooks/gate-storage.yml -e gate_storage_standby=true`. O playbook verifica o relé no Hub, o SSH de entrega e a montagem do cliente na VM 200, as exportações NFS e o UUID `58a9af19-1ed0-4488-b08a-c34c35e5ebbf` em `/mnt/gate-4tb` no PVE. O kernel recusa a desmontagem se houver processos usando o disco. Nesse caso, encerre a atividade identificada e repita a operação.
+2. Aguarde o próximo ciclo de coleta. No Deck 01, confirme **HD Gate 4 TB** em standby, com o disco presente e a capacidade livre ausente. As métricas esperadas são `pve_gate4tb_present 1` e `pve_gate4tb_mounted 0`. O modo de espera preserva a entrada `nofail` em `/etc/fstab`; o PVE pode voltar a montar o disco no próximo boot.
+3. Execute `ansible-playbook -i inventory/hosts.yml playbooks/gate-storage.yml` para restaurar a montagem por UUID e conferir as pastas do lote e do staging no disco de 18 TB. Aguarde a atualização do Deck 01 e confirme `pve_gate4tb_mounted 1`, a capacidade e o espaço livre. A autorização de entrega continua sendo gerenciada por `gate-access.yml`.
