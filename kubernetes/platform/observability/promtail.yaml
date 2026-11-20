@@ -49,6 +49,11 @@ data:
           labels:
             job: ssh-auth
             host: homelab-k3s
+        relabel_configs:
+          - source_labels: [__journal__systemd_unit]
+            regex: 'gate-sshd[.]service'
+            target_label: target
+            replacement: sftp-gate
         pipeline_stages:
           - regex:
               expression: '^(?P<result>Accepted|Failed) [^ ]+ for (?:invalid user )?(?P<user>[a-z_][a-z0-9._-]{0,31}) from (?P<address>[0-9a-fA-F:.]{2,45}) port [0-9]+'
