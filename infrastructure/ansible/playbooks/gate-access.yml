@@ -4,15 +4,18 @@
   become: true
   gather_facts: false
   any_errors_fatal: true
+  vars:
+    gate_load_accounts: "{{ gate_access_open | default(false) | bool or gate_prepare_accounts | default(false) | bool }}"
   tasks:
     - name: Check the access mode and Tailnet policy acceptance
       ansible.builtin.assert:
         that:
+          - not (gate_prepare_accounts | default(false) | bool and gate_access_open | default(false) | bool)
           - not (gate_access_open | default(false) | bool) or (gate_tailnet_policy_verified | default(false) | bool)
-        fail_msg: Verify the Tailnet port grants and negative policy tests before opening the listener.
+        fail_msg: Select preparation or opening separately. Opening requires verified Tailnet port grants and negative policy tests.
 
-    - name: Read the Gate account catalog when opening access
-      when: gate_access_open | default(false) | bool
+    - name: Read the Gate account catalog when preparing accounts or opening access
+      when: gate_load_accounts
       block:
         - name: Install pinned SOPS
           ansible.builtin.import_tasks: tasks/sops.yml
@@ -22,11 +25,12 @@
             argv: [/usr/local/bin/sops, decrypt, --output-type, json, "{{ playbook_dir }}/../gate-accounts.sops.yaml"]
           register: gate_catalog
           changed_when: false
+          check_mode: false
           no_log: true
 
-    - name: Select the accounts declared for this opening
+    - name: Select the accounts to provision on the guest
       ansible.builtin.set_fact:
-        gate_authorized: "{{ (gate_catalog.stdout | from_json).accounts if gate_access_open | default(false) | bool else [] }}"
+        gate_authorized: "{{ (gate_catalog.stdout | from_json).accounts if gate_load_accounts else [] }}"
       no_log: true
 
     - name: Validate distinct account names and access profiles
@@ -58,6 +62,7 @@
         stdin: "{{ item.key.split()[:2] | join(' ') }}"
       loop: "{{ gate_authorized }}"
       changed_when: false
+      check_mode: false
       no_log: true
 
 - name: Close the Hub socket and existing transport sessions before withdrawing access
@@ -84,6 +89,41 @@
             name: gate-relay.service
             state: stopped
 
+- name: Release the guest sessions and batch mount before withdrawing the export
+  hosts: k3s_nodes
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Check for the managed OpenSSH service
+      ansible.builtin.stat:
+        path: /etc/systemd/system/gate-sshd.service
+      register: installed_gate_service
+      when: not (gate_access_open | default(false) | bool)
+
+    - name: Close all Gate sessions and release the batch on a closed run
+      when: not (gate_access_open | default(false) | bool) and installed_gate_service.stat.exists
+      block:
+        - name: Stop the dedicated OpenSSH instance
+          ansible.builtin.systemd_service:
+            name: gate-sshd.service
+            state: stopped
+            enabled: false
+        - name: Unmount the delivery batch
+          ansible.builtin.systemd_service:
+            name: 'srv-gate\x2dsftp-drop-batch.mount'
+            state: stopped
+
+- name: Withdraw the batch export before provisioning accounts for a closed delivery
+  hosts: pve
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Remove the closed delivery export
+      ansible.builtin.include_tasks: tasks/gate-export.yml
+      when: not (gate_access_open | default(false) | bool)
+
 - name: Prepare the VM 200 jails and OpenSSH configuration
   hosts: k3s_nodes
   become: true
@@ -104,13 +144,16 @@
   any_errors_fatal: true
   tasks:
     - name: Configure the NFSv4 batch export
-      ansible.builtin.import_tasks: tasks/gate-export.yml
+      ansible.builtin.include_tasks: tasks/gate-export.yml
+      when: gate_access_open | default(false) | bool
 
 - name: Start the dedicated jails only after publication of the export
   hosts: k3s_nodes
   become: true
   gather_facts: false
   any_errors_fatal: true
+  vars:
+    gate_delivery_users: "{{ hostvars[groups['pve'][0]].gate_authorized | selectattr('profile', 'equalto', 'ssh-sftp-drop') | list }}"
   tasks:
     - name: Start the isolated OpenSSH instance with its NFS mount
       when: gate_access_open | default(false) | bool
@@ -120,12 +163,22 @@
         state: "{{ 'restarted' if gate_config.changed or gate_service.changed or gate_keys.changed or gate_users.changed else 'started' }}"
         daemon_reload: true
 
-    - name: Verify effective write access as each delivery user
-      ansible.builtin.command:
-        argv: [runuser, -u, "{{ item.name }}", --, test, -w, /srv/gate-sftp/drop/batch]
-      loop: "{{ hostvars[groups['pve'][0]].gate_authorized | selectattr('profile', 'equalto', 'ssh-sftp-drop') | list }}"
-      changed_when: false
-      no_log: true
+    - name: Verify write permissions for the open delivery
+      when: gate_access_open | default(false) | bool
+      block:
+        - name: Require a protected chroot root for each delivery user
+          ansible.builtin.command:
+            argv: [runuser, -u, "{{ item.name }}", --, test, '!', -w, /srv/gate-sftp/drop]
+          loop: "{{ gate_delivery_users }}"
+          changed_when: false
+          no_log: true
+
+        - name: Verify effective write access as each delivery user
+          ansible.builtin.command:
+            argv: [runuser, -u, "{{ item.name }}", --, test, -w, /srv/gate-sftp/drop/batch]
+          loop: "{{ gate_delivery_users }}"
+          changed_when: false
+          no_log: true
 
 - name: Bind the Gate relay exclusively to the Hub Tailscale interface
   hosts: hub

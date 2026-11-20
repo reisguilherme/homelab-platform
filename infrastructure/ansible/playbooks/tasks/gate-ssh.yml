@@ -1,22 +1,4 @@
 ---
-- name: Check for the managed OpenSSH service
-  ansible.builtin.stat:
-    path: /etc/systemd/system/gate-sshd.service
-  register: installed_gate_service
-
-- name: Close all Gate sessions and release the batch on a closed run
-  when: installed_gate_service.stat.exists and not (gate_access_open | default(false) | bool)
-  block:
-    - name: Stop the dedicated OpenSSH instance
-      ansible.builtin.systemd_service:
-        name: gate-sshd.service
-        state: stopped
-        enabled: false
-    - name: Unmount the delivery batch
-      ansible.builtin.systemd_service:
-        name: "{{ gate_mount_unit }}"
-        state: stopped
-
 - name: Install the NFS client on the guest
   ansible.builtin.apt:
     name: nfs-common
@@ -70,6 +52,7 @@
   ansible.builtin.command: "mountpoint -q {{ gate_root }}/drop/batch"
   register: gate_mounted
   changed_when: false
+  check_mode: false
   failed_when: gate_mounted.rc not in [0, 1, 32]
 
 - name: Create the unwritable underlying mount point
@@ -85,6 +68,7 @@
   ansible.builtin.command: ldd /bin/dash
   register: gate_dash_libs
   changed_when: false
+  check_mode: false
   failed_when: gate_dash_libs.rc != 0 or 'not found' in gate_dash_libs.stdout
 
 - name: Select files for the diagnostic jail
@@ -132,6 +116,7 @@
   loop: "{{ gate_accounts }}"
   register: gate_existing_users
   changed_when: false
+  check_mode: false
   failed_when: gate_existing_users.rc not in [0, 2]
   no_log: true
 

@@ -11,6 +11,8 @@ O Hub recebe a conexão TCP exclusivamente em `100.109.244.123:2222` pela interf
 
 No checkout revisado de `main` em `pve01`, no diretório `infrastructure/ansible`, o comando `ansible-playbook -i inventory/hosts.yml playbooks/gate-access.yml` prepara a VM 200 e instala as unidades no Hub. O estado padrão mantém o transporte fechado, retira as chaves autorizadas pelo Gate e desmonta uma sessão de entrega anterior. A preparação funciona antes de conectar o disco. O login SSH comum da VM 200 recusa os dois grupos.
 
+Para provisionar as contas e as chaves de um catálogo SOPS já revisado, execute `ansible-playbook -i inventory/hosts.yml playbooks/gate-access.yml -e gate_prepare_accounts=true`. O playbook encerra qualquer entrega anterior e retira a exportação NFS antes de reconciliar as identidades na VM 200. O daemon de entrega e o relé ficam parados. Por exemplo, a chave de `gustavo` fica em `/etc/ssh/gate-keys/gustavo`, sob propriedade de root. Uma nova execução nesse modo também retira as chaves removidas do catálogo. Para abrir uma entrega em outra execução, use os parâmetros do passo 4.
+
 ## Autorizar uma entrega
 
 1. Vincule a identidade autorizada a `group:gate-delivery` no painel privado do Tailnet. Atribua `tag:hub` somente ao Hub e reserve seu `tagOwners` aos administradores. Conceda ao grupo apenas a porta TCP 2222 desse nó. O grant abaixo entra na política existente. O Tailscale soma grants e ACLs, portanto remova ou restrinja qualquer regra abrangente que já permita outras portas a esse grupo. [Tailscale grants e testes de política](https://tailscale.com/kb/1337/policy-syntax)

@@ -1,0 +1,19 @@
+accounts:
+    - name: ENC[AES256_GCM,data:eUgJIvPP5Q==,iv:iT7EaFDtDWWYnl8XfMlh3HNU1eOV2j+TWSkoBKsxY2Q=,tag:geqP+CTSKlRpyNEnaTqz8Q==,type:str]
+      profile: ENC[AES256_GCM,data:d7GM1aTMbWF8x/7avA==,iv:Y7INs6bkyFXWqtAmYSQx3sDRLVpAleO4LwMKrnYugiE=,tag:zbwIMi4xt6vm2tNTZgscLA==,type:str]
+      key: ENC[AES256_GCM,data:wqmsvK1CtOuMAU8icX5N0J0tXuPvgtZ42GsCZ9gAyMGHAoCobRpk/iSx7NFSKmezywZHuu4YgAwN2XYptru/1sJE6vdPIc8w1PQ1HM3vj+I=,iv:HyvPJLlIFjPf0Cu4Z5IJv9drjCpTK1YpqmuYCYZLp8E=,tag:ekTJ79W1vQ8x06Tk3eiHUw==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBVeGVrUHFVc1czWHJUVFBM
+            UlZ3M0pITUhwYmZUTFplN1pGUktQL255aW5BCkhLOGlrOE04N2IrS1E3cWF6VFRu
+            Qkh6bDNhME1GNytlQXJNeStneFJqN0kKLS0tIENFMVg4TE1hTDlKRFJnVGNGZGFL
+            YlRUUmRnV05JMUVwaWZRR2p5ZmZUbnMKsLc8Wr1CWBN4VuL/fEMD3b7fW0kms7fC
+            KoHpDQ3CYx1MesPi1gxQv7ULToppPdr1Qrv55ag2cPcMceTVB4+Ylw==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1nct9442jk3wwys45vtsf22qq29g2zgartrsar36smwdamswmacfq8jway0
+    lastmodified: "2026-11-20T23:43:32Z"
+    mac: ENC[AES256_GCM,data:/TdEmLcpdz9VjMJ1xJk/lkCCyIhvn0rmYrlx67fVP2pBHk+O1tHrrafXhLx+PaS4wUGJWKhWTzjQSzCvb9rhMjN9Hs6B4IShVGu9gy6GCMGhtAX36PnFITm55tN+7ZX28dO5fj7ttqMINdK+CZJEwf9cCPBdJcfusFrUTuKH/FQ=,iv:VWR5ojUTJdonrtlK6qBtHbInkZY7dbfS53rKjEb0Ahw=,tag:t3NGL4f9UJhAoxMFLvO8dw==,type:str]
+    unencrypted_suffix: _unencrypted
+    version: 3.13.3
