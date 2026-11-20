@@ -27,6 +27,14 @@
         state: present
         cache_valid_time: 3600
 
+    - name: Include the guest data mounts in node exporter filesystem metrics
+      tags: [storage_metrics]
+      ansible.builtin.lineinfile:
+        path: /etc/default/prometheus-node-exporter
+        regexp: '^ARGS='
+        line: 'ARGS="--collector.filesystem.mount-points-exclude=^/(dev|proc|run|sys|media|var/lib/docker/.+|var/lib/containers/storage/.+|var/lib/kubelet/.+)($|/)"'
+      notify: Restart node exporter
+
     - name: Identify the kernel selected for the next guest boot
       tags: [igpu]
       ansible.builtin.stat:
@@ -210,6 +218,11 @@
       when: lookup('env', 'GITHUB_TOKEN') | length == 0
 
   handlers:
+    - name: Restart node exporter
+      ansible.builtin.systemd:
+        name: prometheus-node-exporter
+        state: restarted
+
     - name: Reload systemd
       ansible.builtin.systemd:
         daemon_reload: true

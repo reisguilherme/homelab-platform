@@ -1,0 +1,30 @@
+---
+- name: Create metric collector directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - /var/lib/prometheus/node-exporter
+    - /usr/local/libexec
+
+- name: Install host metric collector and systemd units
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {src: "homelab-{{ metric_source }}", dest: "/usr/local/libexec/homelab-{{ metric_source }}", mode: "0755"}
+    - {src: "homelab-textfile@.timer", dest: "/etc/systemd/system/homelab-textfile@.timer", mode: "0644"}
+    - {src: "homelab-textfile@.service", dest: "/etc/systemd/system/homelab-textfile@.service", mode: "0644"}
+  register: installed_collector
+
+- name: Enable and start metric timer
+  ansible.builtin.systemd:
+    name: "homelab-textfile@{{ metric_source }}.timer"
+    daemon_reload: "{{ installed_collector.changed }}"
+    enabled: true
+    state: started
+  when: not (ansible_check_mode and installed_collector.changed)

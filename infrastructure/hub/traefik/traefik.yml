@@ -3,6 +3,8 @@ global:
   sendAnonymousUsage: false
 
 entryPoints:
+  observability:
+    address: "172.28.64.100:8082"
   web:
     address: ":80"
     http:
@@ -22,6 +24,14 @@ entryPoints:
               - "*.greis.dev.br"
   lan-tv:
     address: ":8096"
+
+api:
+  dashboard: false
+
+metrics:
+  prometheus:
+    manualRouting: true
+    addRoutersLabels: true
 
 certificatesResolvers:
   cloudflare:

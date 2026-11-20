@@ -4,7 +4,10 @@ metadata:
   name: spoke-example
   labels:
     app.kubernetes.io/part-of: spoke-example
+    homelab.greis.dev.br/spoke: "true"
     pod-security.kubernetes.io/enforce: baseline
+  annotations:
+    homeship.greis.dev.br/title: spoke-example
 ---
 apiVersion: v1
 kind: ResourceQuota

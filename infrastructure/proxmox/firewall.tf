@@ -126,10 +126,10 @@ resource "proxmox_virtual_environment_firewall_rules" "hub" {
   rule {
     type    = "in"
     action  = "ACCEPT"
-    comment = "K3s Promtail logs (Loki 3100), Prometheus (9090), and Split-DNS (53) from VM 200"
+    comment = "K3s queries to private Hub DNS, Loki, Traefik and Prometheus"
     source  = local.k3s_ip
     proto   = "tcp"
-    dport   = "53,3100,9090"
+    dport   = "53,3100,8082,9090"
     enabled = true
   }
 

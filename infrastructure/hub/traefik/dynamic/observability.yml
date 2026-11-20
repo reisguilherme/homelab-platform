@@ -1,0 +1,10 @@
+http:
+  routers:
+    router-inventory:
+      entryPoints: [observability]
+      rule: "Method(`GET`) && Path(`/api/http/routers`) && ClientIP(`172.28.64.200/32`)"
+      service: api@internal
+    metrics:
+      entryPoints: [observability]
+      rule: "Method(`GET`) && Path(`/metrics`)"
+      service: prometheus@internal

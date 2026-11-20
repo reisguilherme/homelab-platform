@@ -1,0 +1,12 @@
+[Unit]
+Description=Collect %i metrics for Prometheus node_exporter
+
+[Service]
+Type=oneshot
+WorkingDirectory=/var/lib/prometheus/node-exporter
+ExecStart=/bin/sh -ec 'if /usr/local/libexec/homelab-%i > homelab-%i.tmp; then mv -f homelab-%i.tmp homelab-%i.prom; else rm -f homelab-%i.tmp homelab-%i.prom; exit 1; fi'
+TimeoutStartSec=15
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes
+UMask=0022
