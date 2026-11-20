@@ -1,0 +1,71 @@
+---
+- name: Encrypt the existing file backend on the Hub before migration
+  hosts: hub
+  become: true
+  vars:
+    catalog_dir: "{{ playbook_dir }}/../../hub/authelia"
+  tasks:
+    - name: Require the explicitly requested initial account
+      ansible.builtin.assert:
+        that:
+          - initial_username is defined
+          - initial_display_name is defined
+          - initial_groups is defined
+          - initial_groups is sequence and initial_groups is not string and initial_groups | length > 0
+
+    - name: Check whether the controller already has a catalog
+      ansible.builtin.stat:
+        path: "{{ catalog_dir }}/users_database.sops.yaml"
+      delegate_to: localhost
+      register: existing_catalog
+
+    - name: Import the existing database as ciphertext
+      when: not existing_catalog.stat.exists
+      block:
+        - name: Install the pinned encryption tool on the Hub
+          ansible.builtin.import_tasks: tasks/sops.yml
+
+        - name: Encrypt all file-backend credentials at their source
+          ansible.builtin.command:
+            argv:
+              - /usr/local/bin/sops
+              - encrypt
+              - --age
+              - "{{ (lookup('file', playbook_dir + '/../../../.sops.yaml') | from_yaml).creation_rules[0].age }}"
+              - --input-type
+              - yaml
+              - --output-type
+              - yaml
+              - /srv/hub/authelia/users_database.yml
+          register: encrypted_users
+          changed_when: false
+          no_log: true
+
+        - name: Preserve the encrypted catalog on the controller
+          ansible.builtin.copy:
+            content: "{{ encrypted_users.stdout }}\n"
+            dest: "{{ catalog_dir }}/users_database.sops.yaml"
+            mode: "0600"
+            force: false
+          delegate_to: localhost
+          no_log: true
+          diff: false
+
+- name: Prepare OIDC and the initial viewer on the controller
+  hosts: pve
+  become: true
+  tasks:
+    - name: Install the pinned encryption tool on the controller
+      ansible.builtin.import_tasks: tasks/sops.yml
+
+    - name: Install identity management dependencies
+      ansible.builtin.apt:
+        name: [openssl, python3-argon2, python3-yaml]
+        state: present
+
+    - name: Initialize encrypted OIDC material and viewer credentials
+      ansible.builtin.command:
+        argv: "{{ ['/usr/bin/python3', playbook_dir + '/../../../scripts/identities.py', 'bootstrap',
+                   initial_username, '--display-name', initial_display_name, '--groups'] + initial_groups }}"
+      register: identity_bootstrap
+      changed_when: "'updated' in identity_bootstrap.stdout"
