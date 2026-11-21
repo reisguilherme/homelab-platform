@@ -110,10 +110,10 @@
     modification_time: preserve
   loop: [uptime, loadavg]
 
-- name: Check only the requested account names for collisions
+- name: Check the requested names and the reserved QA account for collisions
   ansible.builtin.command:
-    argv: [getent, passwd, "{{ item.name }}"]
-  loop: "{{ gate_accounts }}"
+    argv: [getent, passwd, "{{ item }}"]
+  loop: "{{ ((gate_accounts | map(attribute='name') | list) + ['gate-sftp-qa']) | unique }}"
   register: gate_existing_users
   changed_when: false
   check_mode: false
@@ -124,7 +124,7 @@
   ansible.builtin.assert:
     that: >-
       item.rc == 2 or
-      (item.stdout.split(':')[4] == 'Managed Gate SSH account'
+      (item.stdout.split(':')[4] == ('Temporary Gate SFTP QA' if item.item == 'gate-sftp-qa' else 'Managed Gate SSH account')
       and item.stdout.split(':')[2] | int not in [0, 1000]
       and item.stdout.split(':')[5] == '/')
   loop: "{{ gate_existing_users.results }}"
@@ -133,7 +133,7 @@
 - name: Create individually attributable accounts without supplementary groups
   ansible.builtin.user:
     name: "{{ item.name }}"
-    comment: Managed Gate SSH account
+    comment: "{{ 'Temporary Gate SFTP QA' if item.name == 'gate-sftp-qa' else 'Managed Gate SSH account' }}"
     group: "{{ item.profile }}"
     groups: ''
     append: false
@@ -156,7 +156,8 @@
 - name: Install each dedicated public key centrally
   ansible.builtin.copy:
     dest: "/etc/ssh/gate-keys/{{ item.name }}"
-    content: "restrict {{ item.key.split()[:2] | join(' ') }}\n"
+    content: |
+      restrict{{ ',expiry-time="' ~ gate_smoke_expires_at ~ '"' if item.name == 'gate-sftp-qa' else '' }} {{ item.key.split()[:2] | join(' ') }}
     owner: root
     group: root
     mode: '0644'
@@ -176,7 +177,49 @@
     state: absent
   when: item.path | basename not in (gate_accounts | map(attribute='name') | list)
   loop: "{{ gate_installed_keys.files }}"
+  register: gate_revoked_keys
   no_log: true
+
+- name: Select the previous state of the reserved identity
+  ansible.builtin.set_fact:
+    gate_previous_qa: "{{ gate_existing_users.results | selectattr('item', 'equalto', 'gate-sftp-qa') | first }}"
+  no_log: true
+
+- name: Retire the verified QA identity after withdrawing its key
+  when: gate_smoke_public_key is not defined and gate_previous_qa.rc == 0
+  block:
+    - name: Verify the marked account still has the dedicated primary group
+      ansible.builtin.command:
+        argv: [id, -gn, gate-sftp-qa]
+      register: gate_qa_group
+      changed_when: false
+      check_mode: false
+      failed_when: gate_qa_group.rc != 0 or gate_qa_group.stdout | trim != 'ssh-sftp-drop'
+
+    - name: End processes only for the retired QA uid
+      ansible.builtin.command:
+        argv: [pkill, --signal, TERM, --uid, "{{ gate_previous_qa.stdout.split(':')[2] }}"]
+      register: gate_qa_sessions
+      changed_when: gate_qa_sessions.rc == 0
+      failed_when: gate_qa_sessions.rc not in [0, 1]
+
+    - name: Wait until the QA uid has no remaining processes
+      ansible.builtin.command:
+        argv: [pgrep, --uid, "{{ gate_previous_qa.stdout.split(':')[2] }}"]
+      register: gate_qa_processes
+      changed_when: false
+      retries: 8
+      delay: 1
+      until: gate_qa_processes.rc == 1
+      failed_when: gate_qa_processes.rc not in [0, 1]
+      when: not ansible_check_mode
+
+    - name: Remove only the retired QA account and retain the filesystem
+      ansible.builtin.user:
+        name: gate-sftp-qa
+        state: absent
+        remove: false
+        force: false
 
 - name: Validate and install the Gate OpenSSH configuration
   ansible.builtin.template:

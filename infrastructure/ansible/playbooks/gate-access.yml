@@ -12,6 +12,8 @@
         that:
           - not (gate_prepare_accounts | default(false) | bool and gate_access_open | default(false) | bool)
           - not (gate_access_open | default(false) | bool) or (gate_tailnet_policy_verified | default(false) | bool)
+          - (gate_smoke_public_key is defined) == (gate_smoke_expires_at is defined)
+          - gate_smoke_public_key is not defined or gate_access_open | default(false) | bool
         fail_msg: Select preparation or opening separately. Opening requires verified Tailnet port grants and negative policy tests.
 
     - name: Read the Gate account catalog when preparing accounts or opening access
@@ -39,7 +41,37 @@
           - gate_authorized is sequence and gate_authorized is not string and gate_authorized is not mapping
           - not (gate_access_open | default(false) | bool) or gate_authorized | length > 0
           - gate_authorized | map(attribute='name') | unique | length == gate_authorized | length
+          - "'gate-sftp-qa' not in (gate_authorized | map(attribute='name') | list)"
       no_log: true
+
+    - name: Add a short-lived QA identity only to this open reconciliation
+      when: gate_smoke_public_key is defined
+      block:
+        - name: Require a fixed UTC expiry within 30 minutes of the guest clock
+          ansible.builtin.command:
+            argv:
+              - /usr/bin/python3
+              - -c
+              - |
+                from datetime import datetime, timedelta, timezone
+                import re
+                import sys
+                stamp = sys.argv[1]
+                if not re.fullmatch(r"[0-9]{14}Z", stamp):
+                    sys.exit("Use YYYYMMDDHHMMSSZ for the QA expiry")
+                expiry = datetime.strptime(stamp, "%Y%m%d%H%M%SZ").replace(tzinfo=timezone.utc)
+                now = datetime.now(timezone.utc)
+                if not now < expiry <= now + timedelta(minutes=30):
+                    sys.exit("QA expiry must be within the next 30 minutes")
+              - "{{ gate_smoke_expires_at }}"
+          delegate_to: "{{ groups['k3s_nodes'] | first }}"
+          changed_when: false
+          check_mode: false
+
+        - name: Include the temporary SFTP account in the enrollment checks
+          ansible.builtin.set_fact:
+            gate_authorized: "{{ gate_authorized + [{'name': 'gate-sftp-qa', 'profile': 'ssh-sftp-drop', 'key': gate_smoke_public_key}] }}"
+          no_log: true
 
     - name: Validate the dedicated Ed25519 key and the account profile
       ansible.builtin.assert:
@@ -159,14 +191,26 @@
   any_errors_fatal: true
   vars:
     gate_delivery_users: "{{ hostvars[groups['pve'][0]].gate_authorized | selectattr('profile', 'equalto', 'ssh-sftp-drop') | list }}"
+    gate_restart_sshd: >-
+      {{ gate_service.changed
+         or ((gate_keys.results + gate_users.results) | selectattr('changed') | rejectattr('item.name', 'equalto', 'gate-sftp-qa') | list | length > 0)
+         or (gate_revoked_keys.results | selectattr('changed') | map(attribute='item.path') | map('basename') | reject('equalto', 'gate-sftp-qa') | list | length > 0)
+         or (gate_config.changed and gate_smoke_public_key is not defined and gate_previous_qa.rc == 2) }}
   tasks:
     - name: Start the isolated OpenSSH instance with its NFS mount
       when: gate_access_open | default(false) | bool
       ansible.builtin.systemd_service:
         name: gate-sshd.service
         enabled: true
-        state: "{{ 'restarted' if gate_config.changed or gate_service.changed or gate_keys.changed or gate_users.changed else 'started' }}"
+        state: "{{ 'restarted' if gate_restart_sshd else 'started' }}"
         daemon_reload: true
+
+    - name: Reload the admission list without dropping other sessions during a QA change
+      ansible.builtin.command:
+        argv: [systemctl, kill, --kill-who=main, --signal=HUP, gate-sshd.service]
+      when:
+        - gate_access_open | default(false) | bool
+        - gate_config.changed and not gate_restart_sshd
 
     - name: Verify write permissions for the open delivery
       when: gate_access_open | default(false) | bool
