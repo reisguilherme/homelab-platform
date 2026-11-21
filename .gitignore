@@ -24,6 +24,7 @@ tfplan
 *.tfvars
 !*.tfvars.example
 !/infrastructure/proxmox/igpu.auto.tfvars
+!/infrastructure/proxmox/gate-delivery.auto.tfvars
 infrastructure/ansible/inventory/hosts.yml
 .venv/
 __pycache__/
