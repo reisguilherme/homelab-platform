@@ -175,20 +175,6 @@ resource "proxmox_virtual_environment_firewall_rules" "k3s" {
   node_name = var.pve_node
   vm_id     = proxmox_virtual_environment_vm.k3s.vm_id
 
-  dynamic "rule" {
-    for_each = var.gate_delivery_network_enabled ? [1] : []
-    content {
-      type    = "in"
-      action  = "ACCEPT"
-      comment = "Dedicated Gate SSH from the Hub TCP relay"
-      source  = local.hub_ip
-      dest    = local.k3s_ip
-      proto   = "tcp"
-      dport   = "2222"
-      enabled = true
-    }
-  }
-
   rule {
     type    = "in"
     action  = "ACCEPT"
@@ -225,6 +211,20 @@ resource "proxmox_virtual_environment_firewall_rules" "k3s" {
     proto   = "udp"
     dport   = "6881"
     enabled = true
+  }
+
+  dynamic "rule" {
+    for_each = var.gate_delivery_network_enabled ? [1] : []
+    content {
+      type    = "in"
+      action  = "ACCEPT"
+      comment = "Dedicated Gate SSH from the Hub TCP relay"
+      source  = local.hub_ip
+      dest    = local.k3s_ip
+      proto   = "tcp"
+      dport   = "2222"
+      enabled = true
+    }
   }
 }
 
