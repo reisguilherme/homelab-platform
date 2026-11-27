@@ -1,0 +1,51 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: spoke-overseer
+  namespace: flux-system
+spec:
+  interval: 5m
+  url: https://github.com/reisguilherme/homelab-overseer
+  ref:
+    branch: main
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: spoke-overseer
+  namespace: flux-system
+spec:
+  # Ativar após: (1) ingresso do M710q, (2) migração Seerr -> jellyseerr.greis.dev.br,
+  # (3) digests @sha256 publicados pelo CI no kubernetes/deployment.yaml.
+  suspend: true
+  interval: 5m
+  path: ./kubernetes
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: spoke-overseer
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: spoke-overseer-secrets
+  namespace: flux-system
+spec:
+  # Ativar junto com spoke-overseer após criar secrets/overseer-secrets.sops.yaml.
+  suspend: true
+  interval: 5m
+  dependsOn:
+    - name: spoke-overseer
+  path: ./secrets
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: spoke-overseer
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age

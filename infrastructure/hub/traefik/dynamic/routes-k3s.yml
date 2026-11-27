@@ -6,7 +6,23 @@ http:
   routers:
     # Rotas preparadas para eventual exposição pública futura (ex.: túnel Pangolin/VPS)
     spokes-external-ready:
-      rule: "Host(`jellyfin.greis.dev.br`) || Host(`overseer.greis.dev.br`)"
+      rule: "Host(`jellyfin.greis.dev.br`) || Host(`jellyseerr.greis.dev.br`)"
+      entryPoints: ["websecure"]
+      middlewares: ["private-network-only", "security-headers"]
+      service: k3s-ingress
+
+    # Ingestão WebSocket do spoke-overseer autenticada via Bearer Token (sem cookie SSO)
+    overseer-ws-ingest:
+      rule: "Host(`overseer.greis.dev.br`) && PathPrefix(`/ws/ingest`)"
+      priority: 60
+      entryPoints: ["websecure"]
+      middlewares: ["private-network-only", "security-headers"]
+      service: k3s-ingress
+
+    # Kaneo (spoke-kanban) com autenticação nativa/API Keys/MCP preservada
+    kanban-kaneo:
+      rule: "Host(`kanban.greis.dev.br`)"
+      priority: 50
       entryPoints: ["websecure"]
       middlewares: ["private-network-only", "security-headers"]
       service: k3s-ingress

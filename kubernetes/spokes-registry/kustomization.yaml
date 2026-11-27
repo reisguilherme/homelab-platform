@@ -4,5 +4,7 @@ resources:
   - mediaserver.yaml
   - hermes.yaml
   - dashboard.yaml
+  - overseer.yaml
+  - kanban.yaml
   # Ativar na Etapa 5.5 após validar o cutover do Mediaserver e Hermes:
   # - ./vaultwarden
